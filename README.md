@@ -64,6 +64,8 @@ CHANGELOG.md                                release history
 
 The skill ships with an eval suite that compares it with no guidance and with a one-paragraph writing rule, on seven realistic cases, in both Claude Code and Codex. It checks preserved facts and leaked secrets with code, grades the rest with a blind panel of one judge from each model family, and tests triggering on 20 queries, half of them near misses. The release verdict fails closed if any result is missing. [`evals/README.md`](evals/README.md) describes the method and the release gates; [`evals/results/`](evals/results/) holds each release's results.
 
+**Current result** ([details](evals/results/v0.1.0.md)): with Claude Code, judges preferred the skill's output over the short rule's in 30 of 42 groups, against 9 for the rule. With Codex, they preferred the short rule, 21 groups to 15, though the skill kept more facts. Use the skill in Claude Code. For Codex, and for Pi until it is measured, put the short rule in the global instructions instead.
+
 ```sh
 python3 evals/run.py lint && python3 evals/run.py selftest
 python3 evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
@@ -112,6 +114,7 @@ The rules are restatements, not copies. These sources informed them:
 
 - It improves documents written from the material the agent has. It cannot supply facts the source lacks, and it does not verify technical claims beyond the source.
 - Its guidance is tuned for English. It follows the language of the request, but the revision pass's examples are English patterns.
+- Its measured benefit over a short writing rule holds for Claude Code only. With Codex the rule did as well, and Pi was not measured for quality.
 - The eval suite is small (seven cases) and its judges are models; see [`evals/README.md`](evals/README.md#limitations).
 
 ## License
