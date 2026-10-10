@@ -962,8 +962,15 @@ def gates(summary: dict, n_cases: int, harnesses: list[str], missing: list[str])
 def cmd_lint(_args) -> int:
     errors, warnings = [], []
     if SKILL_MD.exists():
-        meta, body = split_frontmatter(SKILL_MD.read_text(encoding="utf-8"))
+        text = SKILL_MD.read_text(encoding="utf-8")
+        meta, body = split_frontmatter(text)
         name, desc = meta.get("name", ""), meta.get("description", "")
+        # Harnesses with strict YAML parsers (Pi, Codex's validator) silently drop a skill whose
+        # frontmatter does not parse; an unquoted ": " or " #" inside a value is the usual cause.
+        for line in re.match(r"\A---\n(.*?)\n---", text, re.S).group(1).splitlines():
+            value = line.partition(":")[2].strip()
+            if value and value[0] not in "\"'" and (": " in value or " #" in value or value[0] in "*&!|>%@`{["):
+                errors.append(f"frontmatter value is not valid plain YAML; quote it: {line.strip()[:60]}")
         if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", name) or len(name) > 64:
             errors.append(f"name {name!r} violates the Agent Skills name rules")
         if name != SKILL_DIR.name:

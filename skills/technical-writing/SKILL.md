@@ -1,6 +1,6 @@
 ---
 name: technical-writing
-description: Writes and revises engineering documents for human readers: READMEs, guides, API docs, runbooks, RFCs, specs, ADRs, PR descriptions, commit messages, release notes, technical explanations, and handoffs to people. Not for text agents read (skills, prompts, AGENTS.md, agent handoffs).
+description: Writes and revises engineering documents for human readers, such as READMEs, guides, API docs, runbooks, RFCs, specs, ADRs, PR descriptions, commit messages, release notes, technical explanations, and handoffs to people. Not for text agents read (skills, prompts, AGENTS.md, agent handoffs).
 ---
 
 # Technical writing
