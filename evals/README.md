@@ -62,7 +62,7 @@ The report reduces each judgement to one verdict per pair of conditions (C vs B,
 
 Deviation from the cited practice: one judge call grades all dimensions for a group, rather than one isolated call per dimension. This keeps a release run at 84 judgements instead of 336. The mitigations are structured output, reasoning before verdicts, randomized order, a two-family panel, group-level aggregation, and human calibration.
 
-**Calibrate the judge before trusting it.** For a release, a person reads at least five judged groups in `runs/<run-id>/judge/`, records whether they agree with each verdict, and puts the agreement rate in the results file. If agreement is poor, fix `judge.md` before drawing conclusions.
+**Calibrate the judge before trusting it.** For a release, `python3 evals/run.py calibrate --run-id <run-id>` writes `runs/<run-id>/calibration/packet.md`: one randomly chosen group per case, up to five, showing the task, the source, and the skill's and the short rule's outputs as X and Y in random order. A person decides each group, then fills in `key.md`, which holds both judges' verdicts, and puts the agreement rate in the results file. If agreement is poor, fix `judge.md` before drawing conclusions.
 
 ## Triggers
 

@@ -10,11 +10,12 @@ Subcommands:
   generate  run each case under conditions A (no guidance), B (short rule),
             C (skill) for N trials per harness
   check     apply the deterministic checks in cases.json to every output
-  judge     blind, cross-family LLM grading of each (case, trial) group
+  judge     blind LLM grading of each (case, trial) group by a two-family panel
   triggers  measure whether the skill's description triggers on the queries
             in triggers.json
   report    aggregate everything into report.md / report.json with gates
   all       generate, check, judge, triggers, report
+  calibrate write a blind packet of judged groups for the human judge check
 
 Runs are resumable: finished units are skipped, failed ones are retried.
 See evals/README.md for the protocol and the meaning of each metric.
@@ -1115,6 +1116,67 @@ def write_manifest(run: Path, args, opts: HarnessOptions) -> None:
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
+def fenced(text: str, info: str = "") -> str:
+    """Fence text with more backticks than it contains, so nested fences survive."""
+    longest = max((len(m) for m in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}{info}\n{text.rstrip()}\n{fence}"
+
+
+def cmd_calibrate(args) -> int:
+    """Write a blind packet for the human judge check: one random group per case, the skill
+    (C) and the short rule (B) shown as X and Y in random order, and a separate answer key."""
+    run = run_dir(args.run_id, must_exist=True)
+    rng = random.Random(f"{args.run_id}:{args.harness}:calibrate")
+    cases = load_cases()
+    rng.shuffle(cases)
+    packet = [f"# Calibration packet: {args.run_id}, {args.harness} writer", "",
+              "For each group, read the task and the source, then decide which response serves the "
+              "intended reader better, or call it a tie, and note why. Open `key.md` only when you "
+              "have decided every group.", ""]
+    key = [f"# Calibration key: {args.run_id}, {args.harness} writer", "",
+           "Judge columns give each judge's group verdict: the response that ranked better on more "
+           "of the four dimensions. Fill in your call, then count agreements per judge.", "",
+           "| Group | Case | Trial | X | Y | Claude judge | Codex judge | Your call |",
+           "|---|---|---|---|---|---|---|---|"]
+    picked = 0
+    for case in cases:
+        trials = list(range(1, args.trials + 1))
+        rng.shuffle(trials)
+        for trial in trials:
+            outputs = {c: gen_dir(run, args.harness, case, c, trial) / "output.md" for c in ("B", "C")}
+            paths = {j: judge_path(run, args.harness, case, f"t{trial}", j) for j in HARNESSES}
+            if all(p.exists() for p in outputs.values()) and all(p.exists() for p in paths.values()):
+                break
+        else:
+            continue
+        picked += 1
+        x, y = rng.sample(["B", "C"], 2)
+        verdicts = []
+        for judge in HARNESSES:
+            v = group_verdict(load_json(paths[judge]), x, y)
+            verdicts.append({1: "X", -1: "Y", 0: "tie"}.get(v, "–"))
+        names = {"B": "short rule (B)", "C": "skill (C)"}
+        key.append(f"| {picked} | {case['name']} | t{trial} | {names[x]} | {names[y]} | "
+                   f"{verdicts[0]} | {verdicts[1]} | |")
+        packet += [f"## Group {picked}", "", "### Task", "", case["prompt"].strip(), ""]
+        for name, text in case_files(case):
+            packet += [f"### Source: `{name}`", "", fenced(text, "markdown"), ""]
+        for label, cond in (("X", x), ("Y", y)):
+            packet += [f"### Response {label}", "",
+                       fenced(outputs[cond].read_text(encoding="utf-8"), "markdown"), ""]
+        packet += ["**Your call** (X, Y, or tie) and why:", "", "---", ""]
+        if picked == args.groups:
+            break
+    out = run / "calibration"
+    out.mkdir(exist_ok=True)
+    (out / "packet.md").write_text("\n".join(packet), encoding="utf-8")
+    (out / "key.md").write_text("\n".join(key) + "\n", encoding="utf-8")
+    print(f"calibrate: {picked} group(s) -> {(out / 'packet.md').relative_to(ROOT)}, "
+          f"key in {(out / 'key.md').relative_to(ROOT)}")
+    return 0 if picked == args.groups else 1
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1137,7 +1199,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         p.add_argument("--codex-model")
         p.add_argument("--codex-effort")
         p.add_argument("--judge-effort", help="reasoning effort for judge calls (either harness)")
+    p = sub.add_parser("calibrate", help="write a blind packet for the human judge check")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--harness", default="claude", choices=HARNESSES, help="writer whose groups to sample")
+    p.add_argument("--groups", type=int, default=5)
+    p.add_argument("--trials", type=int, default=3)
     args = parser.parse_args(argv)
+    if args.command == "calibrate":
+        return args
     for value in getattr(args, "harness", []):
         if value not in HARNESSES:
             parser.error(f"unknown harness {value}")
@@ -1153,7 +1222,9 @@ def main(argv: list[str]) -> int:
         return cmd_lint(args)
     if args.command == "selftest":
         return cmd_selftest(args)
-    opts = HarnessOptions(args.claude_model, args.claude_effort, args.codex_model, args.codex_effort, args.timeout)
+    if args.command == "calibrate":
+        return cmd_calibrate(args)
+    opts =HarnessOptions(args.claude_model, args.claude_effort, args.codex_model, args.codex_effort, args.timeout)
     steps = {
         "generate": lambda: cmd_generate(args, opts),
         "check": lambda: cmd_check(args),
