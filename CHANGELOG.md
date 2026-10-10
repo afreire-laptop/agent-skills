@@ -4,7 +4,9 @@ All notable changes to this skill are recorded here. The format follows [Keep a 
 
 ## [Unreleased]
 
-Not yet released: the v0.1.0 release gates did not pass for Codex. See [`evals/results/v0.1.0.md`](evals/results/v0.1.0.md).
+## [0.1.0] - 2026-10-10
+
+Released for Claude Code only. Every release gate passed for Claude Code; for Codex the short writing rule did as well as the skill. See [`evals/results/v0.1.0.md`](evals/results/v0.1.0.md).
 
 ### Added
 

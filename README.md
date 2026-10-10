@@ -1,6 +1,6 @@
 # technical-writing
 
-An [Agent Skill](https://agentskills.io/specification) that helps coding agents write and revise engineering documents for people: READMEs, guides, API docs, runbooks, RFCs, specs, ADRs, PR descriptions, commit messages, release notes, technical explanations, and handoffs. It works in Claude Code, OpenAI Codex, and Pi.
+An [Agent Skill](https://agentskills.io/specification) that helps coding agents write and revise engineering documents for people: READMEs, guides, API docs, runbooks, RFCs, specs, ADRs, PR descriptions, commit messages, release notes, technical explanations, and handoffs. It loads in Claude Code, OpenAI Codex, and Pi; v0.1.0 is validated for Claude Code.
 
 It holds the agent to two things at once. Every technical fact in the source survives the edit: identifiers, numbers, commands, constraints, caveats, and stated uncertainty. And the result reads like an experienced engineer wrote it for a specific reader, without filler, inflated claims, or formulaic formatting.
 
@@ -23,23 +23,19 @@ It holds the agent to two things at once. Every technical fact in the source sur
 
 ## Install
 
-Clone the repository anywhere and link only the skill directory, not the repository root, into each harness's skills folder. Linking keeps every harness on the same copy; `git pull` updates it.
+Clone the repository anywhere and link only the skill directory, not the repository root, into the harness's skills folder. A link keeps the install on the clone's checkout; `git pull` updates it.
 
 ```sh
 git clone <repository-url> technical-writing
 cd technical-writing
 git checkout v0.1.0   # optional: pin a release
 
-# Codex and Pi read ~/.agents/skills/
-mkdir -p ~/.agents/skills
-ln -s "$PWD/skills/technical-writing" ~/.agents/skills/technical-writing
-
 # Claude Code reads ~/.claude/skills/
 mkdir -p ~/.claude/skills
 ln -s "$PWD/skills/technical-writing" ~/.claude/skills/technical-writing
 ```
 
-For a single project, link it into `.agents/skills/` (Codex, Pi) or `.claude/skills/` (Claude Code) in the repository instead. Pi also reads `~/.pi/agent/skills/`. Start a new session after installing; harnesses read skill descriptions at startup.
+v0.1.0 is validated for Claude Code only (see [Evaluation](#evaluation)). The skill loads in Codex and Pi too, from `~/.agents/skills/` (and `~/.pi/agent/skills/` for Pi), but there the short writing rule did as well. Link it there only if you want to measure it yourself. Pi reads `~/.claude/skills/` only when its settings list that directory, so the link above does not reach Pi. For a single project, link it into the repository's `.claude/skills/` instead. Start a new session after installing; harnesses read skill descriptions at startup.
 
 ## Use
 
@@ -64,7 +60,7 @@ CHANGELOG.md                                release history
 
 The skill ships with an eval suite that compares it with no guidance and with a one-paragraph writing rule, on seven realistic cases, in both Claude Code and Codex. It checks preserved facts and leaked secrets with code, grades the rest with a blind panel of one judge from each model family, and tests triggering on 20 queries, half of them near misses. The release verdict fails closed if any result is missing. [`evals/README.md`](evals/README.md) describes the method and the release gates; [`evals/results/`](evals/results/) holds each release's results.
 
-**Current result** ([details](evals/results/v0.1.0.md)): with Claude Code, judges preferred the skill's output over the short rule's in 30 of 42 groups, against 9 for the rule. With Codex, they preferred the short rule, 21 groups to 15, though the skill kept more facts. Use the skill in Claude Code. For Codex, and for Pi until it is measured, put the short rule in the global instructions instead.
+**Current result** ([details](evals/results/v0.1.0.md)): with Claude Code, judges preferred the skill's output over the short rule's in 30 of 42 groups, against 9 for the rule. With Codex, they preferred the short rule, 21 groups to 15, though the skill kept more facts. v0.1.0 is therefore released for Claude Code only. For Codex, and for Pi until it is measured, put the short rule in the global instructions instead.
 
 ```sh
 python3 evals/run.py lint && python3 evals/run.py selftest
@@ -85,7 +81,7 @@ Git tags (`v0.1.0`) and [`CHANGELOG.md`](CHANGELOG.md) are the version record. T
 
 1. Move the `Unreleased` entries in `CHANGELOG.md` under the new version.
 2. Run `python3 evals/run.py lint` and `python3 evals/run.py selftest`.
-3. For a minor or major release, run the full suite (`python3 evals/run.py all --run-id vX.Y.Z --judge-effort high`), spot-check at least five judged groups, and copy the report into `evals/results/vX.Y.Z.md` with the calibration result. A patch release runs the cases its change affects.
+3. For a minor or major release, run the full suite (`python3 evals/run.py all --run-id vX.Y.Z --judge-effort high`), have a person decide the groups in the packet from `python3 evals/run.py calibrate --run-id vX.Y.Z`, and copy the report into `evals/results/vX.Y.Z.md` with the calibration result. A patch release runs the cases its change affects.
 4. Commit, then tag: `git tag -a vX.Y.Z -m "technical-writing vX.Y.Z"`.
 
 ## Design decisions
