@@ -1,0 +1,624 @@
+{
+  "skill_name": "technical-writing",
+  "evals": [
+    {
+      "id": 1,
+      "name": "verbose-readme",
+      "artifact": "README section",
+      "prompt": "This README section is too long and people keep missing the important parts. Rewrite it.",
+      "files": [
+        "evals/fixtures/01-verbose-readme.md"
+      ],
+      "expected_output": "A markedly shorter section that leads with requirements and the install command and keeps every requirement, limit, and identifier.",
+      "expectations": [
+        "A reader can find the Node.js requirement and the install command without reading any welcome or framing text.",
+        "Keeps every requirement and limit: Node.js 20.11 or later, macOS and Linux only (Windows unsupported), endpoint required, LOGSHIP_ENDPOINT takes precedence over the config file, default batch of 500 lines, 10 MB batch cap with automatic splitting.",
+        "Keeps the --dry-run recommendation, the logship --version check, and the documentation link.",
+        "Removes the welcome text, filler phrases, and the closing pleasantry.",
+        "Adds no facts, flags, config keys, or installation methods that are not in the source."
+      ],
+      "checks": [
+        {
+          "id": "keeps-node-version",
+          "type": "contains",
+          "value": "20.11"
+        },
+        {
+          "id": "keeps-install-command",
+          "type": "contains",
+          "value": "npm install -g logship@3"
+        },
+        {
+          "id": "keeps-version-check",
+          "type": "contains",
+          "value": "logship --version"
+        },
+        {
+          "id": "keeps-config-path",
+          "type": "contains",
+          "value": "~/.config/logship/config.toml"
+        },
+        {
+          "id": "keeps-env-var",
+          "type": "contains",
+          "value": "LOGSHIP_ENDPOINT"
+        },
+        {
+          "id": "keeps-env-precedence",
+          "type": "regex",
+          "pattern": "LOGSHIP_ENDPOINT[\\s\\S]{0,200}(preceden|override|priority|wins)|(preceden|override|priority)[\\s\\S]{0,200}LOGSHIP_ENDPOINT",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-batch-size-key",
+          "type": "contains",
+          "value": "batch_size"
+        },
+        {
+          "id": "keeps-batch-default",
+          "type": "contains",
+          "value": "500"
+        },
+        {
+          "id": "keeps-batch-cap",
+          "type": "regex",
+          "pattern": "10\\s?MB"
+        },
+        {
+          "id": "keeps-windows-limitation",
+          "type": "regex",
+          "pattern": "windows",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-dry-run",
+          "type": "contains",
+          "value": "--dry-run"
+        },
+        {
+          "id": "keeps-docs-link",
+          "type": "contains",
+          "value": "https://docs.logship.example/config"
+        },
+        {
+          "id": "drops-filler",
+          "type": "not_regex",
+          "pattern": "excited|we hope you enjoy|last but not least|first and foremost|straightforward process",
+          "flags": "i"
+        },
+        {
+          "id": "at-most-60pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.6
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "adr-missing-rationale",
+      "artifact": "ADR",
+      "prompt": "Clean up ADR 0007 so it's ready for review. The thread notes below it are what we actually discussed.",
+      "files": [
+        "evals/fixtures/02-adr-draft.md"
+      ],
+      "expected_output": "An ADR with status, context, decision, consequences, and rejected alternatives drawn only from the notes, with unresolved issues left visibly open.",
+      "expectations": [
+        "Has an ADR structure: status, context, decision, and consequences, and lists the alternatives considered with the reason each was rejected.",
+        "The context explains the motivation using INC-2291: duplicate invoices to about 1,900 customers after a Redis failover.",
+        "The alternatives are only those in the notes (Redlock; making every job idempotent), each with the reason given in the notes.",
+        "Raises the session-scoped lock / dropped-connection problem as an unresolved risk or open question and does not invent a resolution for it.",
+        "States that peak advisory-lock count has not been measured and invents no benchmarks, latencies, or capacity numbers.",
+        "Replaces 'better and more reliable' with the concrete reasons from the notes.",
+        "The status shows the decision is not yet accepted (for example Proposed)."
+      ],
+      "checks": [
+        {
+          "id": "keeps-incident",
+          "type": "contains",
+          "value": "INC-2291"
+        },
+        {
+          "id": "keeps-impact",
+          "type": "regex",
+          "pattern": "1,?900"
+        },
+        {
+          "id": "keeps-lock-function",
+          "type": "contains",
+          "value": "pg_try_advisory_lock"
+        },
+        {
+          "id": "lists-redlock",
+          "type": "contains",
+          "value": "Redlock"
+        },
+        {
+          "id": "lists-idempotency",
+          "type": "regex",
+          "pattern": "idempot",
+          "flags": "i"
+        },
+        {
+          "id": "surfaces-session-scope",
+          "type": "regex",
+          "pattern": "session",
+          "flags": "i"
+        },
+        {
+          "id": "has-status",
+          "type": "regex",
+          "pattern": "status",
+          "flags": "i"
+        },
+        {
+          "id": "has-consequences",
+          "type": "regex",
+          "pattern": "consequence",
+          "flags": "i"
+        },
+        {
+          "id": "not-marked-accepted",
+          "type": "not_regex",
+          "pattern": "status\\W{0,6}accepted",
+          "flags": "i"
+        },
+        {
+          "id": "no-invented-measurements",
+          "type": "not_regex",
+          "pattern": "(?<!\\d[\\s,.\\u202f\\u00a0])\\b(?!600[\\s,.\\u202f\\u00a0]?000\\b)\\d+(\\.\\d+)?\\s?(ms|milliseconds|%|rps|qps|req/s|x faster)(?!\\w)",
+          "flags": "i"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "rfc-constraints",
+      "artifact": "RFC",
+      "prompt": "Restructure this RFC so reviewers can find the decisions and constraints quickly. Don't change the design.",
+      "files": [
+        "evals/fixtures/03-rfc-rate-limiting.md"
+      ],
+      "expected_output": "The same design, reorganized so the summary, hard constraints, failure behavior, alternatives, risks, non-goals, rollout, and open question are each easy to find.",
+      "expectations": [
+        "Starts with a short summary of the problem and the proposed design (per-tenant token buckets in the gateway, stored in Redis).",
+        "States the hard constraints as requirements and keeps their RFC 2119 keywords: backward compatibility with v1 clients (no new required headers, v1 response bodies unchanged) and no more than 2 ms added p99 gateway latency.",
+        "Keeps every number and identifier: 600 requests per minute, burst of 100, 429 with Retry-After in seconds, rate_limit_v2, one week of shadow mode, 10% of tenants, ratelimit.redis_unavailable, INC-2240, INC-2263.",
+        "States the fail-open behavior when Redis is unreachable and the reason for it.",
+        "Lists the rejected alternatives with reasons: implementing it in each service, and CDN rate limiting that can only key on IP address.",
+        "Keeps the risk of sharing the Redis cluster with user sessions and says the cost of a dedicated cluster is unknown, without inventing a figure.",
+        "Makes the non-goals (per-user and per-endpoint limits) and the open question about enterprise overrides explicit.",
+        "Changes no design decision and adds no new ones."
+      ],
+      "checks": [
+        {
+          "id": "keeps-default-limit",
+          "type": "contains",
+          "value": "600"
+        },
+        {
+          "id": "keeps-burst",
+          "type": "contains",
+          "value": "100"
+        },
+        {
+          "id": "keeps-status-code",
+          "type": "contains",
+          "value": "429"
+        },
+        {
+          "id": "keeps-retry-after",
+          "type": "contains",
+          "value": "Retry-After"
+        },
+        {
+          "id": "keeps-latency-budget",
+          "type": "regex",
+          "pattern": "2\\s?ms"
+        },
+        {
+          "id": "keeps-p99",
+          "type": "regex",
+          "pattern": "p99",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-must",
+          "type": "regex",
+          "pattern": "\\bMUST\\b"
+        },
+        {
+          "id": "keeps-must-not",
+          "type": "regex",
+          "pattern": "\\bMUST NOT\\b"
+        },
+        {
+          "id": "keeps-flag",
+          "type": "contains",
+          "value": "rate_limit_v2"
+        },
+        {
+          "id": "keeps-metric",
+          "type": "contains",
+          "value": "ratelimit.redis_unavailable"
+        },
+        {
+          "id": "keeps-incidents",
+          "type": "regex",
+          "pattern": "INC-2240[\\s\\S]*INC-2263|INC-2263[\\s\\S]*INC-2240"
+        },
+        {
+          "id": "keeps-fail-open",
+          "type": "regex",
+          "pattern": "fails?[- ]open",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-shadow-mode",
+          "type": "regex",
+          "pattern": "shadow",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-rollout-percentage",
+          "type": "regex",
+          "pattern": "10\\s?%"
+        },
+        {
+          "id": "keeps-cdn-alternative",
+          "type": "contains",
+          "value": "CDN"
+        },
+        {
+          "id": "keeps-session-risk",
+          "type": "regex",
+          "pattern": "session",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-non-goals",
+          "type": "regex",
+          "pattern": "non-goal|out of scope|not in scope|not included|does not (include|cover)|excluded",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-open-question",
+          "type": "regex",
+          "pattern": "enterprise",
+          "flags": "i"
+        },
+        {
+          "id": "has-alternatives-section",
+          "type": "regex",
+          "pattern": "^(#{1,4} |\\*\\*).*alternatives",
+          "flags": "im"
+        },
+        {
+          "id": "has-open-questions-section",
+          "type": "regex",
+          "pattern": "^(#{1,4} |\\*\\*).*open questions?",
+          "flags": "im"
+        },
+        {
+          "id": "no-invented-cost",
+          "type": "not_regex",
+          "pattern": "[$€£]\\s?\\d"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "vague-pr",
+      "artifact": "pull request description",
+      "prompt": "Write a proper PR title and description for this branch. The current one is useless.",
+      "files": [
+        "evals/fixtures/04-vague-pr.md"
+      ],
+      "expected_output": "A specific title and a description that explains the bug, the fix, the migration, exactly what was and wasn't tested, and the open risk.",
+      "expectations": [
+        "The title names the actual change (exports and the daily export schedule use the account's timezone).",
+        "Explains the user-visible bug from #482 and how the change fixes it, and keeps a closing reference to #482.",
+        "Explains that accounts.timezone is nullable and that null keeps the existing UTC behavior.",
+        "Calls out the migration file.",
+        "Reports testing exactly as stated: unit tests with UTC, Australia/Sydney, and DST cases; migration tested against the staging dump; integration suite not run.",
+        "Flags the untested MySQL 5.7 reporting replica as a risk or question for reviewers.",
+        "Mentions the unrelated toLocal dead-code removal separately from the main change.",
+        "Invents no test results, coverage numbers, screenshots, or reviewers."
+      ],
+      "checks": [
+        {
+          "id": "title-names-timezone-change",
+          "type": "regex",
+          "pattern": "\\A(?:\\s*\\S[^\\n]*\\n){0,2}?\\s*[^\\n]*time\\s?zone",
+          "flags": "i"
+        },
+        {
+          "id": "closes-issue",
+          "type": "regex",
+          "pattern": "(closes|fixes|resolves)\\s+#482",
+          "flags": "i"
+        },
+        {
+          "id": "names-migration",
+          "type": "contains",
+          "value": "20260930_add_tz_to_exports"
+        },
+        {
+          "id": "explains-null-behavior",
+          "type": "regex",
+          "pattern": "null",
+          "flags": "i"
+        },
+        {
+          "id": "reports-sydney-case",
+          "type": "contains",
+          "value": "Australia/Sydney"
+        },
+        {
+          "id": "reports-dst-case",
+          "type": "regex",
+          "pattern": "DST|daylight",
+          "flags": "i"
+        },
+        {
+          "id": "reports-staging-dump",
+          "type": "regex",
+          "pattern": "staging",
+          "flags": "i"
+        },
+        {
+          "id": "mentions-integration-suite",
+          "type": "regex",
+          "pattern": "integration",
+          "flags": "i"
+        },
+        {
+          "id": "no-false-integration-claim",
+          "type": "not_regex",
+          "pattern": "integration (tests|suite) (pass|passed|passing|green)",
+          "flags": "i"
+        },
+        {
+          "id": "flags-mysql-replica",
+          "type": "contains",
+          "value": "MySQL 5.7"
+        },
+        {
+          "id": "mentions-dead-code",
+          "type": "contains",
+          "value": "toLocal"
+        },
+        {
+          "id": "no-invented-coverage",
+          "type": "not_regex",
+          "pattern": "\\d+\\s?%\\s+coverage|coverage[^\\n.]{0,20}\\d+\\s?%",
+          "flags": "i"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "conventional-commit",
+      "artifact": "commit message",
+      "prompt": "Write the commit message for the staged change.",
+      "files": [
+        "evals/fixtures/05-commit-diff.md"
+      ],
+      "expected_output": "A Conventional Commits message matching the repository's history that marks the breaking change and says how to migrate.",
+      "expectations": [
+        "Uses the repository's Conventional Commits style: type(scope): lowercase description, no trailing period.",
+        "Marks the breaking change with ! before the colon and/or a BREAKING CHANGE: footer.",
+        "Says what breaks and how to migrate: rename timeout to timeoutMs and convert seconds to milliseconds; old configs fail validation at startup.",
+        "References issue #317.",
+        "Contains only the commit message, or the message in a single code block, with no extra commentary mixed into it."
+      ],
+      "checks": [
+        {
+          "id": "conventional-header",
+          "type": "regex",
+          "target": "header",
+          "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\\([a-z0-9-]+\\))?!?: [a-z0-9`][^\\n]*[^.\\s]$"
+        },
+        {
+          "id": "header-within-72-chars",
+          "type": "regex",
+          "target": "header",
+          "pattern": "^.{1,72}$"
+        },
+        {
+          "id": "blank-line-before-body",
+          "type": "regex",
+          "target": "message",
+          "pattern": "\\A[^\\n]+(\\n\\n[\\s\\S]+)?\\n?\\Z"
+        },
+        {
+          "id": "marks-breaking-change",
+          "type": "regex",
+          "target": "message",
+          "pattern": "\\A[a-z]+(\\([^)]*\\))?!:|^BREAKING[ -]CHANGE: \\S",
+          "flags": "m"
+        },
+        {
+          "id": "names-new-key",
+          "type": "contains",
+          "target": "message",
+          "value": "timeoutMs"
+        },
+        {
+          "id": "states-unit-change",
+          "type": "regex",
+          "target": "message",
+          "pattern": "millisecond|\\bms\\b",
+          "flags": "i"
+        },
+        {
+          "id": "references-issue",
+          "type": "contains",
+          "target": "message",
+          "value": "#317"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "ai-patterns",
+      "artifact": "technical explanation",
+      "prompt": "Edit this explanation of our cache invalidation for the team wiki. It reads like it was written by a chatbot.",
+      "files": [
+        "evals/fixtures/06-ai-prose.md"
+      ],
+      "expected_output": "A plain explanation that keeps every mechanism and staleness bound and drops the promotional framing.",
+      "expectations": [
+        "Keeps every technical fact: 300-second TTL in the regional Redis cache, write-through on PUT /items/:id in the region that handled the write, the items.changed Kafka topic, other regions typically stale for up to about 2 seconds, and up to 300 seconds stale when Kafka is unavailable.",
+        "Leads with how the cache works and how stale a reader can expect data to be.",
+        "Removes promotional language, staging phrases, emoji headings, bold-label bullets, and the empty conclusion.",
+        "Adds no claims, guarantees, metrics, or components that are not in the source."
+      ],
+      "checks": [
+        {
+          "id": "keeps-ttl",
+          "type": "contains",
+          "value": "300"
+        },
+        {
+          "id": "keeps-endpoint",
+          "type": "contains",
+          "value": "PUT /items/:id"
+        },
+        {
+          "id": "keeps-topic",
+          "type": "contains",
+          "value": "items.changed"
+        },
+        {
+          "id": "keeps-kafka",
+          "type": "contains",
+          "value": "Kafka"
+        },
+        {
+          "id": "keeps-write-through",
+          "type": "regex",
+          "pattern": "write[- ]through",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-cross-region-bound",
+          "type": "regex",
+          "pattern": "(2|two)\\s?(s\\b|sec|second)",
+          "flags": "i"
+        },
+        {
+          "id": "drops-stock-phrases",
+          "type": "not_regex",
+          "pattern": "\\b(delve|seamless(ly)?|cutting-edge|game-changing|fast-paced|testament|empowering|unlocked|lightning-fast|dive in|deep dive|in conclusion|at its core|perfect balance|fundamental pillar)\\b",
+          "flags": "i",
+          "ignore_quoted": true
+        },
+        {
+          "id": "drops-not-just-contrast",
+          "type": "not_regex",
+          "pattern": "(isn't|is not|it's not|not) just\\b[^.\\n]{0,80}[—–-]{1,2}\\s*it's",
+          "flags": "i",
+          "ignore_quoted": true
+        },
+        {
+          "id": "drops-emoji",
+          "type": "not_regex",
+          "pattern": "[\\U0001F300-\\U0001FAFF\\u2600-\\u27BF]"
+        },
+        {
+          "id": "drops-bold-label-bullets",
+          "type": "not_regex",
+          "pattern": "^\\s*[-*]\\s+\\*\\*[^*\\n]+\\*\\*",
+          "flags": "m"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "sensitive-runbook",
+      "artifact": "runbook",
+      "prompt": "Turn Tomás's notes into a runbook for the on-call team. It will be published on our internal wiki.",
+      "files": [
+        "evals/fixtures/07-runbook-notes.md"
+      ],
+      "expected_output": "An ordered, verifiable runbook with placeholders for secrets, the timing window, verification, and rollback, and none of the sensitive values.",
+      "expectations": [
+        "Does not reproduce the database password, the Vault token, or the customer's email address anywhere, including in notes or comments about the edit; uses placeholders and tells readers to request their own Vault token in #sre.",
+        "Presents numbered steps in the safe order (write to Vault, ALTER ROLE from the bastion, restart, watch the rollout) with the exact commands from the notes.",
+        "Includes the prerequisites (bastion access, own Vault token), the timing window (outside 09:00–18:00 UTC; invoice batch at 18:30), and the expected duration (about 4 minutes for 12 pods).",
+        "Includes verification (healthz returns db ok; billing dashboard error rate stays flat) and rollback (vault kv rollback to the previous version, then restart).",
+        "Leaves out the unrelated customer alert.",
+        "Invents no commands, hosts, or steps."
+      ],
+      "checks": [
+        {
+          "id": "no-password",
+          "type": "not_contains",
+          "value": "fixture-only-Pw-7Qz2-not-real"
+        },
+        {
+          "id": "no-vault-token",
+          "type": "not_contains",
+          "value": "fixture-only-ops-token-0000"
+        },
+        {
+          "id": "no-customer-email",
+          "type": "not_regex",
+          "pattern": "maria\\.santos|maria santos",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-vault-write",
+          "type": "contains",
+          "value": "vault kv put secret/billing/db"
+        },
+        {
+          "id": "keeps-alter-role",
+          "type": "contains",
+          "value": "ALTER ROLE svc_billing"
+        },
+        {
+          "id": "keeps-restart",
+          "type": "contains",
+          "value": "kubectl -n billing rollout restart deploy/billing-api"
+        },
+        {
+          "id": "keeps-rollout-watch",
+          "type": "contains",
+          "value": "kubectl -n billing rollout status deploy/billing-api"
+        },
+        {
+          "id": "keeps-safe-order",
+          "type": "regex",
+          "pattern": "vault kv put[\\s\\S]*ALTER ROLE[\\s\\S]*rollout restart"
+        },
+        {
+          "id": "keeps-bastion",
+          "type": "regex",
+          "pattern": "bastion",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-healthz",
+          "type": "contains",
+          "value": "/healthz"
+        },
+        {
+          "id": "keeps-rollback",
+          "type": "contains",
+          "value": "vault kv rollback"
+        },
+        {
+          "id": "keeps-window",
+          "type": "regex",
+          "pattern": "09:00[\\s\\S]{0,40}18:00|18:00[\\s\\S]{0,40}09:00"
+        },
+        {
+          "id": "keeps-batch-time",
+          "type": "contains",
+          "value": "18:30"
+        }
+      ]
+    }
+  ]
+}

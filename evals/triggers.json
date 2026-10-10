@@ -1,0 +1,22 @@
+[
+  {"query": "Write the PR description for the change I just made: the webhook sender now retries 5xx responses up to 3 times with exponential backoff, and there's a new WEBHOOK_MAX_RETRIES env var. Tests are in webhook.test.ts.", "should_trigger": true, "note": "PR description"},
+  {"query": "Draft release notes for v2.4.0. Merged since 2.3.1: #611 adds SSO via Okta, #615 fixes CSV export encoding, #620 drops Node 18 support (that one is breaking).", "should_trigger": true, "note": "release notes"},
+  {"query": "The quickstart in our README is a wall of text and new contributors keep missing the Docker step. Tighten it up: 'To get started with the project you will first want to make sure you have cloned the repository and then you should install dependencies with pnpm install and after that it is necessary to run docker compose up -d so the database is available, then pnpm dev.'", "should_trigger": true, "note": "README revision"},
+  {"query": "We decided to use SQS instead of Kafka for the background job queue because we don't need replay and nobody on the team has run Kafka in production. Write this up as an ADR.", "should_trigger": true, "note": "ADR"},
+  {"query": "Reviewers say they can't find the constraints or non-goals in my RFC for moving sessions to signed JWTs. Restructure it so they can: 'Sessions are currently stored in Redis... we must keep logout working instantly... not trying to replace OAuth here... tokens expire after 15 minutes...'", "should_trigger": true, "note": "RFC restructure"},
+  {"query": "Give me a conventional commit message for this: I renamed getUser to fetchUser in the public SDK and removed the old export entirely.", "should_trigger": true, "note": "commit message"},
+  {"query": "Write a short explainer for the support team about why some customers see a 'session expired' banner since the token-refresh change shipped. They're not engineers.", "should_trigger": true, "note": "technical explanation for a non-engineering audience"},
+  {"query": "Turn these on-call notes into a runbook: pause the ingest consumer group, drain the queue until lag is 0, restart ingest-worker pods one at a time, resume the consumer group, check the lag dashboard.", "should_trigger": true, "note": "runbook"},
+  {"query": "Our API reference for POST /v2/orders mixes request fields, error codes and examples in one big paragraph. Rewrite it so developers can scan it.", "should_trigger": true, "note": "API documentation"},
+  {"query": "I'm handing the billing migration over to Sam next week. Write Sam a handoff doc: phase 1 is done, phase 2 is blocked on the ledger export, and rollback is the billing_v2 flag.", "should_trigger": true, "note": "handoff to a person"},
+  {"query": "Add a rule to AGENTS.md telling coding agents to run pnpm lint before every commit.", "should_trigger": false, "note": "agent-facing instructions (writing-for-agents)"},
+  {"query": "Create a new agent skill that formats SQL migrations according to our team's conventions.", "should_trigger": false, "note": "skill authoring (writing-for-agents)"},
+  {"query": "Write a system prompt for our customer-support chatbot so it stays polite and escalates refund requests over $500 to a human.", "should_trigger": false, "note": "prompt for a model, not people"},
+  {"query": "Write a handoff so a fresh agent session can pick up this refactor exactly where we left off.", "should_trigger": false, "note": "agent-to-agent handoff (handoff skill)"},
+  {"query": "Generate an OpenAPI 3.1 YAML spec for the orders endpoints defined in src/routes/orders.ts.", "should_trigger": false, "note": "machine-readable spec"},
+  {"query": "Set up commitlint and husky so every commit message is checked against Conventional Commits.", "should_trigger": false, "note": "tooling setup, not writing"},
+  {"query": "Fix the off-by-one error in the pagination helper in src/util/paginate.ts; the last page is always empty.", "should_trigger": false, "note": "code change"},
+  {"query": "Translate the strings in locales/en.json into Brazilian Portuguese and save them as locales/pt-BR.json.", "should_trigger": false, "note": "UI string translation"},
+  {"query": "Interview me about the new notifications feature until the requirements are clear, then we'll turn it into a spec.", "should_trigger": false, "note": "requirements discovery (to-spec / grilling)"},
+  {"query": "What does the --frozen-lockfile flag do in pnpm?", "should_trigger": false, "note": "quick factual question"}
+]

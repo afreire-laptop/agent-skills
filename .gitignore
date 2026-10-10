@@ -1,0 +1,4 @@
+# Eval run artifacts (raw model outputs, transcripts, grades)
+evals/runs/
+__pycache__/
+.DS_Store

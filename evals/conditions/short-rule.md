@@ -1,0 +1,1 @@
+When writing for people (docs, PRs, commits, ADRs, specs, runbooks): lead with what the reader needs; be concrete and concise; keep every fact, constraint, identifier, and caveat; never invent rationale, results, or numbers, and mark gaps instead; never reproduce secrets or personal data; follow the repository's conventions; cut filler and AI clichés.
