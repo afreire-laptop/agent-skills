@@ -1,0 +1,65 @@
+---
+name: technical-writing
+description: Writes and revises engineering documents for human readers: READMEs, guides, API docs, runbooks, RFCs, specs, ADRs, PR descriptions, commit messages, release notes, technical explanations, and handoffs to people. Not for text agents read (skills, prompts, AGENTS.md, agent handoffs).
+---
+
+# Technical writing
+
+Write for one reader: the person who will use this document to understand, do, or decide something. Assume an experienced engineer with little time and none of your context. The document works when that reader gets what they need quickly and every technical fact in the source arrives intact.
+
+The **source** is everything you were given: draft, notes, diff, thread, code.
+
+## Before writing
+
+1. Name the reader, the action or decision the document serves, and what the reader already knows.
+2. Find the conventions this document must follow, and let them override everything below: templates (`.github/PULL_REQUEST_TEMPLATE.md`, `docs/adr/`), commit history and commitlint config, the CHANGELOG format, the structure and terms of neighbouring docs, the language of the request.
+3. When revising, keep the author's structure, terms, and voice where they work; change what slows the reader down.
+
+## Keep the facts
+
+These hold whatever else the task asks.
+
+- Every constraint, number, unit, identifier, command, code sample, link, requirement keyword (MUST, SHOULD), caveat, and stated uncertainty in the source survives, unless the task asks to remove it.
+- Write only what the source supports; a plausible guess is a defect the reader cannot see. When a fact the reader needs is missing, name it in your note to the user. Mark it inside the document (`TODO(author): …` or an open question) only in drafts that are reviewed before anyone relies on them, such as an RFC or ADR.
+- The document speaks for its author. Your own analysis, concerns, and suggestions go in your note to the user, never into the document as the author's statements or decisions.
+- Replace secrets, credentials, tokens, and personal data with placeholders such as `<new-password>`, and say how to obtain the real value. Keep them out of your notes about the edit too.
+- Before finishing, compare the draft with the source: every fact is present, deliberately moved, or listed in your note as removed.
+
+## Write for the reader
+
+- Lead with what the reader needs first (the decision, the change, the action, the answer) within the artifact's usual structure. Background follows.
+- Be specific: numbers, names, conditions, and failure behaviour ("fails open and emits `ratelimit.redis_unavailable`") instead of qualities ("robust", "reliable").
+- Use one term per concept throughout.
+- Match form to content: numbered steps for procedures, a table for items compared on the same attributes, prose for reasoning and trade-offs. Add headings where the reader needs to navigate.
+- Keep emphasis rare. Bold marks a defined term or a warning the reader must not miss, not whole sentences or list labels. Structure comes from headings and lists, without emoji or status icons.
+- Concise means no wasted words, not fewer facts. Cut framing ("In this section we will…"), restatement, and closing summaries; keep the depth the reader needs.
+
+## Revision pass
+
+Reread the draft as its reader and rewrite any passage that sounds like a template rather than a person:
+
+- staging: openers that announce what follows, "It's not X, it's Y", closing summaries, hopes, offers → start and end with content
+- inflation: "seamless", "robust", "powerful", "plays a crucial role" → the specific property or effect
+- rhythm by rule: triads for cadence, sentences of uniform shape → the structure the content has
+- decoration: emoji, bold-label bullets, title-case headings → plain sentences, sentence-case headings
+- confidence the source doesn't support, in either direction → match the source
+
+Act on patterns, not single words; an ordinary "key" or a single dash is fine.
+
+## Artifact notes
+
+What each artifact's reader looks for first, and what drafts most often lose. Use these to check order and coverage, not as a template: cover what the source supports, in the source's or repository's structure when it works, and add no section only to fill it.
+
+- **README or guide:** what it is, requirements, and a command that works, before any background. Commands are copy-pasteable.
+- **API reference:** per endpoint or function: parameters with type, required, and default; responses and errors; one example.
+- **Runbook:** an on-call engineer under pressure needs prerequisites and timing constraints before step 1, numbered steps with the exact commands, how to verify, and how to roll back.
+- **RFC or spec:** reviewers look for the decision and the hard constraints first; drafts most often lose the rejected alternatives with reasons, non-goals, and open questions. Restructure freely; decisions stay the author's.
+- **ADR:** a title that states the decision, then the usual order: status (Proposed until accepted), the context that forced the decision, the decision, consequences good and bad, and the alternatives with why each lost. Supersede an accepted ADR with a new one instead of editing it.
+- **PR description:** a title naming the change, why (with the issue link), what a reviewer must look at, testing exactly as done including what was not run, and risks or migrations. Call out unrelated changes.
+- **Commit message:** follow the repository's history. Under Conventional Commits: `type(scope): summary`, with `!` and/or a `BREAKING CHANGE:` footer saying what breaks and how to migrate. Otherwise an imperative summary of about 50 characters, a blank line, and a body wrapped near 72 that explains why.
+- **Release notes:** written for the release's users: breaking changes and required actions first, then changes in user terms, with issue or PR links.
+- **Explanation or handoff:** the answer or current state first, then the reasoning. A handoff names decisions made, open work and blockers, and where things live.
+
+## Output
+
+Give the document itself. Everything inside it addresses its reader. After it, and clearly separated from it, add a note to the user only for what they must act on (missing facts, content you removed, claims to verify), in at most three short bullets.
