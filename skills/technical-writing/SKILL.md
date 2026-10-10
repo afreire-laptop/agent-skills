@@ -17,13 +17,14 @@ The **source** is everything you were given: draft, notes, diff, thread, code.
 
 ## Keep the facts
 
-These hold whatever else the task asks.
+These hold whatever else the task asks. When they conflict, the earlier one wins.
 
-- Every constraint, number, unit, identifier, command, code sample, link, requirement keyword (MUST, SHOULD), caveat, and stated uncertainty in the source survives, unless the task asks to remove it.
-- Write only what the source supports; a plausible guess is a defect the reader cannot see. When a fact the reader needs is missing, name it in your note to the user. Mark it inside the document (`TODO(author): …` or an open question) only in drafts that are reviewed before anyone relies on them, such as an RFC or ADR.
-- The document speaks for its author. Your own analysis, concerns, and suggestions go in your note to the user, never into the document as the author's statements or decisions.
-- Replace secrets, credentials, tokens, and personal data with placeholders such as `<new-password>`, and say how to obtain the real value. Keep them out of your notes about the edit too.
-- Before finishing, compare the draft with the source: every fact is present, deliberately moved, or listed in your note as removed.
+1. Secrets, credentials, tokens, and personal data appear nowhere, neither in the document nor in your note. Use placeholders such as `<new-password>` and say how to obtain the real value.
+2. Every fact the document's reader needs survives exactly as given: constraints, numbers, units, identifiers, commands, code, links, requirement keywords (MUST, SHOULD), caveats, and stated uncertainty. Material that doesn't serve this reader, such as an unrelated alert or a side discussion, can go, as can anything the user asks to cut.
+3. Write only what the source supports; a plausible guess is a defect the reader cannot see. When a fact the reader needs is missing, name it in your note to the user. Mark it inside the document (`TODO(author): …` or an open question) only in drafts that are reviewed before anyone relies on them, such as an RFC or ADR.
+4. The document speaks for its author. Your own analysis, concerns, and suggestions go in your note to the user, never into the document as the author's statements or decisions.
+
+Before finishing, compare the draft with the source: every needed fact is present, and nothing is there that the source doesn't support.
 
 ## Write for the reader
 

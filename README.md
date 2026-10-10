@@ -62,7 +62,7 @@ CHANGELOG.md                                release history
 
 ## Evaluation
 
-The skill ships with an eval suite that compares it with no guidance and with a one-paragraph writing rule, on seven realistic cases, in both Claude Code and Codex. It checks preserved facts and leaked secrets with code, grades the rest with a blind judge from the other model family, and tests triggering on 20 queries, half of them near misses. [`evals/README.md`](evals/README.md) describes the method and the release gates; [`evals/results/`](evals/results/) holds each release's results.
+The skill ships with an eval suite that compares it with no guidance and with a one-paragraph writing rule, on seven realistic cases, in both Claude Code and Codex. It checks preserved facts and leaked secrets with code, grades the rest with a blind panel of one judge from each model family, and tests triggering on 20 queries, half of them near misses. The release verdict fails closed if any result is missing. [`evals/README.md`](evals/README.md) describes the method and the release gates; [`evals/results/`](evals/results/) holds each release's results.
 
 ```sh
 python3 evals/run.py lint && python3 evals/run.py selftest
@@ -92,6 +92,7 @@ Git tags (`v0.1.0`) and [`CHANGELOG.md`](CHANGELOG.md) are the version record. T
 - **A nested skill directory.** The skill lives in `skills/technical-writing/` so installs link only the skill, never the evals or their fixtures, and so the layout matches what multi-harness tooling expects.
 - **A narrow description.** About 70 tokens: the artifact types that should trigger it, and one exclusion for agent-facing text, where `writing-for-agents` applies.
 - **Rules from evidence.** The skill was drafted after running the cases without it. Baseline models already preserved facts well; what they got wrong was long commentary after the document, bold and emoji, the model's own analysis written as the author's, and, once the first draft was in place, empty sections and TODO stubs. Section checklists were rewritten as reader priorities for that reason.
+- **Explicit precedence in the fact rules.** Protecting secrets and personal data comes first, then the facts this reader needs, then writing only what the source supports, then the author's voice. "Keep every fact" alone conflicts with ordinary relevance edits and with removing sensitive material, as the adversarial review pointed out.
 - **The short rule as the bar.** The skill competes with a ~60-token writing rule, not with nothing. If it stops beating that rule, the rule should replace it.
 - **Specifications versus advice.** Conventional Commits rules apply only where the repository uses them; line lengths, mood, and subject case follow the repository's history. Style guidance from individual authors informed the rules but none is treated as universal.
 

@@ -405,8 +405,37 @@ def cmd_selftest(_args) -> int:
         errors += not ok
         print(f"{'ok  ' if ok else 'FAIL'} {case['name']}: reference fails {ref_failures or 'none'}; "
               f"raw input fails {len(raw_failures)}/{len(case['checks'])} checks")
-    print("selftest: ok" if not errors else f"selftest: {errors} case(s) failed")
+    errors += selftest_gates()
+    print("selftest: ok" if not errors else f"selftest: {errors} failure(s)")
     return 1 if errors else 0
+
+
+def selftest_gates() -> int:
+    """The release gates must fail closed on partial runs and decide correctly on full ones."""
+    def harness(c_preferred: int, b_preferred: int, cases_preferred: int) -> dict:
+        cond = {"check_pass_rate": 0.97, "fidelity_pass_rate": 0.9, "sensitive_leaks": 0}
+        return {"conditions": {"B": dict(cond), "C": dict(cond)},
+                "C_vs_B": {"groups": {"first": c_preferred, "tie": 0, "second": b_preferred},
+                           "cases_preferred": [f"case{i}" for i in range(cases_preferred)]},
+                "triggers": {"recall": 0.9, "false_positive_rate": 0.1}}
+
+    full = {"claude": harness(30, 10, 5), "codex": harness(25, 15, 4)}
+    scenarios = [
+        ("empty run", {}, [], "INCOMPLETE"),
+        ("one harness missing", {"claude": full["claude"]}, [], "INCOMPLETE"),
+        ("no judge results", {**full, "codex": {**full["codex"], "C_vs_B": None}}, [], "INCOMPLETE"),
+        ("missing generations", full, ["generation codex/x/C/t3"], "INCOMPLETE"),
+        ("complete and passing", full, [], "SHIP"),
+        ("short rule as good", {**full, "codex": harness(10, 12, 2)}, [], "SIMPLIFY"),
+    ]
+    failures = 0
+    for name, harnesses, missing, expected in scenarios:
+        lines = gates({"harnesses": json.loads(json.dumps(harnesses))}, 7, list(HARNESSES), missing)
+        verdict = next(l for l in lines if l.startswith("**Verdict:**"))
+        ok = f"**Verdict:** {expected}" in verdict
+        failures += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} gates, {name}: {verdict.removeprefix('**Verdict:** ')}")
+    return failures
 
 
 # --------------------------------------------------------------------------- judge
@@ -464,34 +493,49 @@ def validate_judgement(data: dict | None, labels: list[str], n_expectations: int
     return None
 
 
+def judges_for(harness: str, mode: str) -> list[str]:
+    """`panel` (default): both families judge every group, which separates writer effects
+    from judge taste. `cross`: only the other family. Or one named harness."""
+    if mode == "panel":
+        return list(HARNESSES)
+    if mode == "cross":
+        return [other_harness(harness)]
+    return [mode]
+
+
+def judge_path(run: Path, harness: str, case: dict, trial_name: str, judge: str) -> Path:
+    return run / "judge" / harness / case["name"] / trial_name / f"{judge}.json"
+
+
 def cmd_judge(args, opts: HarnessOptions) -> None:
     run = run_dir(args.run_id, must_exist=True)
+    judge_opts = opts.with_effort(args.judge_effort)
     tasks = []
     for harness in args.harness:
         for case in select_cases(args.cases):
-            trials = sorted({p.name for p in (run / "gen" / harness / case["name"]).glob("*/t*")})
-            for trial_name in trials:
-                out = run / "judge" / harness / case["name"] / f"{trial_name}.json"
-                if out.exists():
-                    continue
+            for trial in range(1, args.trials + 1):
+                trial_name = f"t{trial}"
                 outputs = {}
-                for condition in CONDITIONS:
-                    meta = load_meta(gen_dir(run, harness, case, condition, int(trial_name[1:])))
+                for condition in args.conditions:
+                    out_dir = gen_dir(run, harness, case, condition, trial)
+                    meta = load_meta(out_dir)
                     if meta and meta.get("ok"):
-                        outputs[condition] = (gen_dir(run, harness, case, condition, int(trial_name[1:]))
-                                              / "output.md").read_text(encoding="utf-8")
+                        outputs[condition] = (out_dir / "output.md").read_text(encoding="utf-8")
                 if len(outputs) < 2:
                     continue
-                judge = args.judge_harness if args.judge_harness != "cross" else other_harness(harness)
-                tasks.append(lambda h=harness, c=case, t=trial_name, o=outputs, j=judge, f=out:
-                             judge_one(args.run_id, h, c, t, o, j, f, opts.with_effort(args.judge_effort)))
-    print(f"judge: {len(tasks)} group(s) to grade")
+                for judge in judges_for(harness, args.judge_harness):
+                    out = judge_path(run, harness, case, trial_name, judge)
+                    if not out.exists():
+                        tasks.append(lambda h=harness, c=case, t=trial_name, o=outputs, j=judge, f=out:
+                                     judge_one(args.run_id, h, c, t, o, j, f, judge_opts))
+    print(f"judge: {len(tasks)} judgement(s) to make")
     parallel(tasks, args.jobs)
 
 
 def judge_one(run_id, harness, case, trial_name, outputs: dict[str, str], judge, out: Path, opts) -> str:
-    conditions = list(outputs)
-    random.Random(f"{run_id}:{harness}:{case['name']}:{trial_name}").shuffle(conditions)
+    conditions = sorted(outputs)
+    # Each judge sees its own seeded order, so position effects do not repeat across the panel.
+    random.Random(f"{run_id}:{harness}:{case['name']}:{trial_name}:{judge}").shuffle(conditions)
     mapping = {f"R{i}": cond for i, cond in enumerate(conditions, 1)}
     prompt = build_judge_prompt(case, {label: outputs[cond] for label, cond in mapping.items()})
     error = None
@@ -633,10 +677,23 @@ def fmt_mean_sd(values: list[float]) -> str:
     return fmt(m) if s is None else f"{fmt(m)} ± {s * 100:.0f}"
 
 
-def pairwise(judgements: list[dict], first: str, second: str) -> dict:
-    """Win/tie/loss counts of condition `first` against `second`, per dimension and per case."""
-    by_dim = {d: [0, 0, 0] for d in DIMENSIONS}
-    by_case: dict[str, int] = {}
+def group_verdict(judgement: dict, first: str, second: str) -> int | None:
+    """One verdict per judged group: +1 if `first` beats `second` on more dimensions than
+    it loses, -1 for the reverse, 0 otherwise. Dimensions from one call are correlated,
+    so they are not counted as separate votes."""
+    label_of = {cond: label for label, cond in judgement["mapping"].items()}
+    if first not in label_of or second not in label_of:
+        return None
+    wins = losses = 0
+    for dim in judgement["result"]["dimensions"]:
+        ranks = {r["label"]: r["rank"] for r in dim["ranks"]}
+        a, b = ranks[label_of[first]], ranks[label_of[second]]
+        wins, losses = wins + (a < b), losses + (a > b)
+    return (wins > losses) - (wins < losses)
+
+
+def dimension_counts(judgements: list[dict], first: str, second: str) -> dict[str, list[int]]:
+    counts = {d: [0, 0, 0] for d in DIMENSIONS}
     for j in judgements:
         label_of = {cond: label for label, cond in j["mapping"].items()}
         if first not in label_of or second not in label_of:
@@ -644,66 +701,104 @@ def pairwise(judgements: list[dict], first: str, second: str) -> dict:
         for dim in j["result"]["dimensions"]:
             ranks = {r["label"]: r["rank"] for r in dim["ranks"]}
             a, b = ranks[label_of[first]], ranks[label_of[second]]
-            outcome = 0 if a < b else 1 if a == b else 2
-            by_dim[dim["dimension"]][outcome] += 1
-            by_case[j["case"]] = by_case.get(j["case"], 0) + (1 if a < b else -1 if a > b else 0)
-    return {"by_dimension": by_dim, "net_by_case": by_case}
+            counts[dim["dimension"]][0 if a < b else 1 if a == b else 2] += 1
+    return counts
 
 
-def cmd_report(args) -> None:
+def bootstrap_ci(per_case: dict[str, list[int]], seed: str, rounds: int = 2000) -> tuple[float, float, float]:
+    """Mean per-case preference (-1..1) with a 95% bootstrap interval, resampling cases."""
+    case_means = [statistics.fmean(v) for v in per_case.values()]
+    rng = random.Random(seed)
+    stats = sorted(statistics.fmean(rng.choice(case_means) for _ in case_means) for _ in range(rounds))
+    return statistics.fmean(case_means), stats[int(0.025 * rounds)], stats[int(0.975 * rounds) - 1]
+
+
+def missing_results(args, run: Path, cases: list[dict], metas: list[dict], checks: list[dict],
+                    triggers: list[dict]) -> list[str]:
+    """Everything the documented gates need, given this run's parameters."""
+    missing = []
+    ok = {(m["harness"], m["case"], m["condition"], m["trial"]) for m in metas if m["ok"]}
+    checked = {(c["harness"], c["case"], c["condition"], c["trial"]) for c in checks}
+    trigger_keys = {(t["harness"], t["index"], t["attempt"]) for t in triggers}
+    n_queries = len(load_json(TRIGGERS_FILE))
+    for harness in args.harness:
+        for case in cases:
+            for trial in range(1, args.trials + 1):
+                for cond in args.conditions:
+                    key = (harness, case["name"], cond, trial)
+                    if key not in ok:
+                        missing.append(f"generation {harness}/{case['name']}/{cond}/t{trial}")
+                    elif key not in checked:
+                        missing.append(f"checks {harness}/{case['name']}/{cond}/t{trial}")
+                for judge in judges_for(harness, args.judge_harness):
+                    if not judge_path(run, harness, case, f"t{trial}", judge).exists():
+                        missing.append(f"judgement {harness}/{case['name']}/t{trial} by {judge}")
+        for index in range(1, n_queries + 1):
+            for attempt in range(1, args.trigger_runs + 1):
+                if (harness, index, attempt) not in trigger_keys:
+                    missing.append(f"trigger {harness}/q{index}/r{attempt}")
+    return missing
+
+
+def cmd_report(args) -> int:
     run = run_dir(args.run_id, must_exist=True)
-    cases = load_cases()
-    metas = [load_json(p) for p in sorted((run / "gen").glob("*/*/*/t*/meta.json"))]
-    checks = load_json(run / "checks.json") if (run / "checks.json").exists() else []
+    cases = select_cases(args.cases)
+    case_names = {c["name"] for c in cases}
+    metas = [m for m in (load_json(p) for p in sorted((run / "gen").glob("*/*/*/t*/meta.json")))
+             if m["harness"] in args.harness and m["case"] in case_names and m["condition"] in args.conditions]
+    checks = [c for c in (load_json(run / "checks.json") if (run / "checks.json").exists() else [])
+              if c["harness"] in args.harness and c["case"] in case_names and c["condition"] in args.conditions]
     judgements = []
-    for path in sorted((run / "judge").glob("*/*/t*.json")):
+    for path in sorted((run / "judge").glob("*/*/t*/*.json")):
         data = load_json(path)
-        data.update({"harness": path.parts[-3], "case": path.parts[-2], "trial": path.stem})
-        judgements.append(data)
-    triggers = [load_json(p) for p in sorted((run / "triggers").glob("*/q*.json"))]
-    harnesses = sorted({m["harness"] for m in metas} | {t["harness"] for t in triggers})
-    conditions = [c for c in CONDITIONS if any(m["condition"] == c for m in metas)]
+        data.update({"harness": path.parts[-4], "case": path.parts[-3], "trial": path.parts[-2]})
+        if data["harness"] in args.harness and data["case"] in case_names:
+            judgements.append(data)
+    triggers = [t for t in (load_json(p) for p in sorted((run / "triggers").glob("*/q*.json")))
+                if t["harness"] in args.harness]
+    conditions = [c for c in CONDITIONS if c in args.conditions]
 
-    summary: dict = {"run_id": args.run_id, "harnesses": {}, "gates": {}}
-    lines = [f"# Eval report: {args.run_id}", "", f"Manifest: `{(run / 'manifest.json').relative_to(ROOT)}`", ""]
+    summary: dict = {"run_id": args.run_id, "harnesses": {}}
+    lines = [f"# Eval report: {args.run_id}", "",
+             f"Manifest: `{(run / 'manifest.json').relative_to(ROOT)}`. Expected: {len(cases)} cases × "
+             f"{len(conditions)} conditions × {args.trials} trials per harness ({', '.join(args.harness)}), "
+             f"judges: {args.judge_harness}, {args.trigger_runs} trigger runs per query.", ""]
 
-    for harness in harnesses:
+    for harness in args.harness:
         h_metas = [m for m in metas if m["harness"] == harness]
         h_checks = [c for c in checks if c["harness"] == harness]
         h_judge = [j for j in judgements if j["harness"] == harness]
         h_sum: dict = {"conditions": {}}
         summary["harnesses"][harness] = h_sum
         lines += [f"## {harness}", ""]
-        if h_metas:
-            models = sorted({m.get("model") or "default" for m in h_metas})
-            failed = [m for m in h_metas if not m["ok"]]
-            judges = sorted({f"{j['judge']} ({j.get('judge_model') or 'default'})" for j in h_judge})
-            lines += [f"Writer model: {', '.join(models)}. Judge: {', '.join(judges) or 'none'}. "
-                      f"Failed generations: {len(failed)}.", ""]
-            lines += ["| Condition | Checks passed (mean ± sd over trials) | Expectations passed (judge) "
-                      "| Fidelity passed (judge) | Sensitive leaks | Input tokens | Output words |",
-                      "|---|---|---|---|---|---|---|"]
+        models = sorted({m.get("model") or "default" for m in h_metas})
+        judges = sorted({f"{j['judge']} ({j.get('judge_model') or 'default'})" for j in h_judge})
+        lines += [f"Writer model: {', '.join(models) or '–'}. Judges: {', '.join(judges) or 'none'}. "
+                  f"Failed generations: {sum(not m['ok'] for m in h_metas)}.", "",
+                  "| Condition | Checks passed (mean ± sd over trials) | Expectations passed (judges) "
+                  "| Fidelity passed (judges) | Sensitive leaks | Input tokens | Output words |",
+                  "|---|---|---|---|---|---|---|"]
         for cond in conditions:
             c_checks = [c for c in h_checks if c["condition"] == cond]
             per_trial = []
             for trial in sorted({c["trial"] for c in c_checks}):
                 rows = [c for c in c_checks if c["trial"] == trial]
                 per_trial.append(sum(r["passed"] for r in rows) / len(rows))
-            exp_verdicts, fidelity = [], []
+            verdicts, fidelity = [], []
             for j in h_judge:
                 label = next((l for l, c in j["mapping"].items() if c == cond), None)
                 response = next((r for r in j["result"]["responses"] if r["label"] == label), None)
                 if response:
-                    exp_verdicts += [e["verdict"] for e in response["expectations"]]
-                    fidelity.append(response["fidelity"] == "pass")
-            known = [v for v in exp_verdicts if v != "unknown"]
+                    verdicts += [e["verdict"] for e in response["expectations"]]
+                    fidelity.append(float(response["fidelity"] == "pass"))
+            known = [v for v in verdicts if v != "unknown"]
             c_metas = [m for m in h_metas if m["condition"] == cond and m["ok"]]
             leaks = sum(1 for c in c_checks if c["check"] in SENSITIVE_CHECKS and not c["passed"])
             row = {
                 "check_pass_rate": mean(per_trial), "check_pass_sd": stdev(per_trial),
                 "expectation_pass_rate": (sum(v == "pass" for v in known) / len(known)) if known else None,
-                "expectation_unknown": exp_verdicts.count("unknown"),
-                "fidelity_pass_rate": mean([float(f) for f in fidelity]),
+                "expectation_unknown": verdicts.count("unknown"),
+                "fidelity_pass_rate": mean(fidelity),
                 "sensitive_leaks": leaks,
                 "mean_input_tokens": mean([m["usage"].get("input_tokens", 0) for m in c_metas]),
                 "mean_output_words": mean([m["output_words"] for m in c_metas]),
@@ -713,17 +808,15 @@ def cmd_report(args) -> None:
                          f"| {fmt(row['expectation_pass_rate'])} | {fmt(row['fidelity_pass_rate'])} "
                          f"| {leaks} | {fmt(row['mean_input_tokens'], False)} "
                          f"| {fmt(row['mean_output_words'], False)} |")
-        if h_metas:
-            lines.append("")
-            base = h_sum["conditions"].get("A", {}).get("mean_input_tokens")
-            for cond in ("B", "C"):
-                tokens = h_sum["conditions"].get(cond, {}).get("mean_input_tokens")
-                if base and tokens:
-                    h_sum["conditions"][cond]["guidance_overhead_tokens"] = tokens - base
-                    lines.append(f"Measured guidance overhead, {cond} vs A: {tokens - base:,.0f} input tokens per call.")
-            lines.append("")
+        lines.append("")
+        base = h_sum["conditions"].get("A", {}).get("mean_input_tokens")
+        for cond in ("B", "C"):
+            tokens = h_sum["conditions"].get(cond, {}).get("mean_input_tokens")
+            if base and tokens:
+                h_sum["conditions"][cond]["guidance_overhead_tokens"] = tokens - base
+                lines.append(f"Measured guidance overhead, {cond} vs A: {tokens - base:,.0f} input tokens per call.")
+        lines.append("")
 
-        # Per-case deterministic results.
         if h_checks:
             lines += ["| Case | " + " | ".join(f"{c} checks" for c in conditions) + " | Failing checks under C |",
                       "|---|" + "---|" * len(conditions) + "---|"]
@@ -737,100 +830,128 @@ def cmd_report(args) -> None:
                 lines.append(f"| {case['name']} | " + " | ".join(cells) + f" | {', '.join(failing) or '–'} |")
             lines.append("")
 
-        # Pairwise preferences from the judge.
         for first, second in (("C", "B"), ("C", "A"), ("B", "A")):
-            pw = pairwise(h_judge, first, second)
-            if not any(sum(v) for v in pw["by_dimension"].values()):
+            rows, per_case, pooled = [], {}, [0, 0, 0]
+            for judge in sorted({j["judge"] for j in h_judge}):
+                tally = [0, 0, 0]
+                for j in (x for x in h_judge if x["judge"] == judge):
+                    v = group_verdict(j, first, second)
+                    if v is None:
+                        continue
+                    tally[1 - v] += 1
+                    per_case.setdefault(j["case"], []).append(v)
+                pooled = [a + b for a, b in zip(pooled, tally)]
+                rows.append(f"| {judge} | {tally[0]} | {tally[1]} | {tally[2]} |")
+            if not per_case:
                 continue
-            h_sum[f"{first}_vs_{second}"] = pw
-            lines += [f"Judge preference, {first} vs {second} (win / tie / loss over cases × trials):", ""]
-            lines += ["| Dimension | Win | Tie | Loss |", "|---|---|---|---|"]
-            for dim, (w, t, l) in pw["by_dimension"].items():
-                lines.append(f"| {dim} | {w} | {t} | {l} |")
-            net = pw["net_by_case"]
-            lines += ["", "Net preference by case (wins minus losses across dimensions and trials): "
-                      + ", ".join(f"{k} {v:+d}" for k, v in sorted(net.items())), ""]
+            preferred = sorted(k for k, v in per_case.items() if sum(v) > 0)
+            point, low, high = bootstrap_ci(per_case, f"{args.run_id}:{harness}:{first}{second}")
+            h_sum[f"{first}_vs_{second}"] = {
+                "groups": {"first": pooled[0], "tie": pooled[1], "second": pooled[2]},
+                "cases_preferred": preferred, "net_by_case": {k: sum(v) for k, v in per_case.items()},
+                "mean_case_preference": point, "ci95": [low, high]}
+            lines += [f"Judge verdicts, {first} vs {second}, one per judged group:", "",
+                      f"| Judge | {first} preferred | Tie | {second} preferred |", "|---|---|---|---|", *rows,
+                      f"| pooled | {pooled[0]} | {pooled[1]} | {pooled[2]} |", "",
+                      f"{first} net-preferred on {len(preferred)} of {len(per_case)} cases"
+                      + (f" ({', '.join(preferred)})" if preferred else "")
+                      + f". Mean per-case preference {point:+.2f} on a −1 to +1 scale, "
+                      f"95% bootstrap interval {low:+.2f} to {high:+.2f}.", ""]
+            if (first, second) == ("C", "B"):
+                dims = dimension_counts(h_judge, "C", "B")
+                lines += ["C vs B by dimension (descriptive; dimensions from one call are correlated):", "",
+                          "| Dimension | C better | Tie | B better |", "|---|---|---|---|"]
+                lines += [f"| {d} | {w} | {t} | {l} |" for d, (w, t, l) in dims.items()] + [""]
 
-        # Position bias audit: how often the response shown first was ranked best.
-        firsts = [min(r["rank"] for r in d["ranks"]) == next(r["rank"] for r in d["ranks"] if r["label"] == "R1")
-                  for j in h_judge for d in j["result"]["dimensions"]]
-        if firsts:
-            n = len(h_judge[0]["mapping"])
-            h_sum["position_bias_r1_best"] = mean([float(f) for f in firsts])
-            lines += [f"Position audit: the first-shown response was ranked best (ties included) in "
-                      f"{fmt(h_sum['position_bias_r1_best'])} of dimension judgements; "
-                      f"about {fmt(1 / n)} or more is expected without bias, since ties count.", ""]
+        for judge in sorted({j["judge"] for j in h_judge}):
+            mine = [j for j in h_judge if j["judge"] == judge]
+            firsts = [float(min(r["rank"] for r in d["ranks"]) ==
+                            next(r["rank"] for r in d["ranks"] if r["label"] == "R1"))
+                      for j in mine for d in j["result"]["dimensions"]]
+            lines.append(f"Position audit, {judge}: first-shown response ranked best (ties included) in "
+                         f"{fmt(mean(firsts))} of dimension judgements; at least {fmt(1 / len(conditions))} "
+                         f"is expected without bias. With few groups this is confounded with which condition "
+                         f"happened to be shown first.")
+        lines.append("")
 
-        # Trigger results.
         h_trig = [t for t in triggers if t["harness"] == harness]
         if h_trig:
-            pos = [t["triggered"] for t in h_trig if t["should_trigger"]]
-            neg = [t["triggered"] for t in h_trig if not t["should_trigger"]]
-            recall, fpr = mean([float(x) for x in pos]), mean([float(x) for x in neg])
+            pos = [float(t["triggered"]) for t in h_trig if t["should_trigger"]]
+            neg = [float(t["triggered"]) for t in h_trig if not t["should_trigger"]]
             undiscovered = sum(1 for t in h_trig if t.get("discovered") is False)
-            h_sum["triggers"] = {"recall": recall, "false_positive_rate": fpr, "runs": len(h_trig),
+            h_sum["triggers"] = {"recall": mean(pos), "false_positive_rate": mean(neg), "runs": len(h_trig),
                                  "undiscovered_runs": undiscovered}
-            lines += [f"Triggering: recall {fmt(recall)} on should-trigger queries, false-positive rate "
-                      f"{fmt(fpr)} on near misses ({len(h_trig)} runs"
-                      + (f"; skill not discovered in {undiscovered} runs" if undiscovered else "") + ").", ""]
-            lines += ["| # | Expected | Trigger rate | Query |", "|---|---|---|---|"]
+            lines += [f"Triggering: recall {fmt(mean(pos))} on should-trigger queries, false-positive rate "
+                      f"{fmt(mean(neg))} on near misses ({len(h_trig)} runs"
+                      + (f"; skill not discovered in {undiscovered} runs" if undiscovered else "") + ").", "",
+                      "| # | Expected | Trigger rate | Query |", "|---|---|---|---|"]
             for index in sorted({t["index"] for t in h_trig}):
                 runs = [t for t in h_trig if t["index"] == index]
                 rate = mean([float(t["triggered"]) for t in runs])
-                miss = "" if (rate >= 0.5) == runs[0]["should_trigger"] else " ⚠"
+                flag = "" if (rate >= 0.5) == runs[0]["should_trigger"] else " ⚠"
                 query = runs[0]["query"][:90] + ("…" if len(runs[0]["query"]) > 90 else "")
-                lines.append(f"| {index} | {'yes' if runs[0]['should_trigger'] else 'no'} | {fmt(rate)}{miss} | {query} |")
+                lines.append(f"| {index} | {'yes' if runs[0]['should_trigger'] else 'no'} "
+                             f"| {fmt(rate)}{flag} | {query} |")
             lines.append("")
 
-    lines += gates(summary, cases)
+    missing = missing_results(args, run, cases, metas, checks, triggers)
+    lines += gates(summary, len(cases), args.harness, missing)
     (run / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (run / "report.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print("\n".join(lines))
+    return 0
 
 
-def gates(summary: dict, cases: list[dict]) -> list[str]:
-    """Apply the pre-registered release gates from evals/README.md."""
+def gates(summary: dict, n_cases: int, harnesses: list[str], missing: list[str]) -> list[str]:
+    """Apply the pre-registered release gates from evals/README.md. Fails closed: any missing
+    result, or any gate that could not be evaluated for a harness, makes the run INCOMPLETE."""
+    needed = math.ceil(n_cases / 2)
     results: dict[str, bool | None] = {}
-    notes = []
-    for harness, h in summary["harnesses"].items():
-        b, c = h["conditions"].get("B"), h["conditions"].get("C")
-        if b and c:
-            results[f"{harness}: no sensitive leaks under C"] = c["sensitive_leaks"] == 0
-            results[f"{harness}: C checks ≥ B checks − {FIDELITY_TOLERANCE:.0%}"] = (
-                c["check_pass_rate"] >= b["check_pass_rate"] - FIDELITY_TOLERANCE)
-            if c["fidelity_pass_rate"] is not None and b["fidelity_pass_rate"] is not None:
-                results[f"{harness}: C judge fidelity ≥ B − {FIDELITY_TOLERANCE:.0%}"] = (
-                    c["fidelity_pass_rate"] >= b["fidelity_pass_rate"] - FIDELITY_TOLERANCE)
-        pw = h.get("C_vs_B")
-        if pw:
-            wins = sum(v[0] for v in pw["by_dimension"].values())
-            losses = sum(v[2] for v in pw["by_dimension"].values())
-            preferred = sum(1 for v in pw["net_by_case"].values() if v > 0)
-            needed = math.ceil(len(cases) / 2)
-            results[f"{harness}: judge prefers C over B overall"] = wins > losses
-            results[f"{harness}: C preferred over B on ≥ {needed}/{len(cases)} cases"] = preferred >= needed
-            notes.append(f"{harness}: C vs B {wins} wins / {losses} losses; preferred on {preferred} case(s).")
-        t = h.get("triggers")
-        if t:
-            results[f"{harness}: trigger recall ≥ {MIN_TRIGGER_RECALL:.0%}"] = t["recall"] >= MIN_TRIGGER_RECALL
-            results[f"{harness}: trigger false positives ≤ {MAX_TRIGGER_FALSE_POSITIVE:.0%}"] = (
-                t["false_positive_rate"] <= MAX_TRIGGER_FALSE_POSITIVE)
+    for harness in harnesses:
+        h = summary["harnesses"].get(harness, {})
+        b, c = h.get("conditions", {}).get("B"), h.get("conditions", {}).get("C")
+        cb, t = h.get("C_vs_B"), h.get("triggers")
+
+        def gate(name: str, value):
+            results[f"{harness}: {name}"] = value
+
+        gate("no sensitive leaks under C", None if not c else c["sensitive_leaks"] == 0)
+        gate(f"C checks ≥ B checks − {FIDELITY_TOLERANCE:.0%}",
+             None if not (b and c) or None in (b["check_pass_rate"], c["check_pass_rate"])
+             else c["check_pass_rate"] >= b["check_pass_rate"] - FIDELITY_TOLERANCE)
+        gate(f"C judge fidelity ≥ B − {FIDELITY_TOLERANCE:.0%}",
+             None if not (b and c) or None in (b["fidelity_pass_rate"], c["fidelity_pass_rate"])
+             else c["fidelity_pass_rate"] >= b["fidelity_pass_rate"] - FIDELITY_TOLERANCE)
+        gate("judges prefer C over B in more groups than the reverse",
+             None if not cb else cb["groups"]["first"] > cb["groups"]["second"])
+        gate(f"C net-preferred over B on ≥ {needed}/{n_cases} cases",
+             None if not cb else len(cb["cases_preferred"]) >= needed)
+        gate(f"trigger recall ≥ {MIN_TRIGGER_RECALL:.0%}",
+             None if not t else t["recall"] is not None and t["recall"] >= MIN_TRIGGER_RECALL)
+        gate(f"trigger false positives ≤ {MAX_TRIGGER_FALSE_POSITIVE:.0%}",
+             None if not t else t["false_positive_rate"] is not None
+             and t["false_positive_rate"] <= MAX_TRIGGER_FALSE_POSITIVE)
     summary["gates"] = results
-    lines = ["## Release gates", ""] + [f"- {'PASS' if ok else 'FAIL'}: {name}" for name, ok in results.items()]
-    lines += [""] + notes
-    safety = all(ok for name, ok in results.items() if "leak" in name or "≥ B" in name)
-    value = all(ok for name, ok in results.items() if "over B" in name)
-    trig = all(ok for name, ok in results.items() if "trigger" in name)
-    if not results:
-        verdict = "INCOMPLETE: no gate could be evaluated."
-    elif not safety:
+    summary["missing"] = missing
+    mark = {True: "PASS", False: "FAIL", None: "NOT EVALUATED"}
+    lines = ["## Release gates", ""] + [f"- {mark[ok]}: {name}" for name, ok in results.items()]
+    if missing:
+        lines += ["", f"Missing results ({len(missing)}): " + "; ".join(missing[:10])
+                  + ("; …" if len(missing) > 10 else "")]
+
+    def all_pass(*keys: str) -> bool:
+        return all(ok for name, ok in results.items() if any(k in name for k in keys))
+
+    if missing or not results or any(ok is None for ok in results.values()):
+        verdict = "INCOMPLETE: the run is missing results the gates need; no release decision."
+    elif not all_pass("leak", "≥ B"):
         verdict = "FIX: the skill loses fidelity or safety relative to the short rule."
-    elif not value:
+    elif not all_pass("over B"):
         verdict = "SIMPLIFY: the short rule performs about as well; prefer it over the skill."
-    elif not trig:
+    elif not all_pass("trigger"):
         verdict = "FIX DESCRIPTION: content passes but triggering misses the thresholds."
     else:
-        verdict = "SHIP: every evaluated gate passes."
+        verdict = "SHIP: every gate passes for every harness."
     summary["verdict"] = verdict
     return lines + ["", f"**Verdict:** {verdict}", ""]
 
@@ -968,7 +1089,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         p.add_argument("--conditions", default="A,B,C", type=lambda s: s.split(","))
         p.add_argument("--trials", type=int, default=3)
         p.add_argument("--jobs", type=int, default=4)
-        p.add_argument("--judge-harness", default="cross", choices=["cross", *HARNESSES])
+        p.add_argument("--judge-harness", default="panel", choices=["panel", "cross", *HARNESSES])
         p.add_argument("--trigger-runs", type=int, default=3)
         p.add_argument("--trigger-timeout", type=int, default=180)
         p.add_argument("--timeout", type=int, default=600, help="seconds per generation or judge call")

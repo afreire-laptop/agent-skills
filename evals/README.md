@@ -27,10 +27,10 @@ Python 3.10 or later, and at least one of the [Claude Code](https://code.claude.
 python3 evals/run.py lint        # skill frontmatter, budgets, eval data
 python3 evals/run.py selftest    # graders: references pass, raw inputs fail
 
-# Smoke run: one trial per condition, about 42 generations and 14 judge calls.
+# Smoke run: one trial, 42 generations, 28 judgements, 40 trigger runs.
 python3 evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
 
-# Release run: three trials, about 126 generations, 42 judge calls, 120 trigger runs.
+# Release run: three trials, 126 generations, 84 judgements, 120 trigger runs.
 python3 evals/run.py all --run-id v0.1.0 --judge-effort high
 ```
 
@@ -52,15 +52,15 @@ Each generation runs in a fresh temporary directory. Claude runs with tools and 
 
 **Deterministic checks** (`checks` in `cases.json`) cover what code can verify: identifiers, numbers, and commands that must survive; sensitive values that must not appear; Conventional Commits header grammar; filler and stock phrases; length relative to the input. Types are `contains`, `not_contains`, `regex`, `not_regex`, and `max_word_ratio`. A check can target the whole `output`, the commit `message` (the first fenced code block, or the whole output if there is none), or its `header` (first line). Checks grade the outcome, never the path taken.
 
-**The judge** grades what code cannot. For each case and trial, a model from the *other* family (Codex grades Claude's outputs and vice versa) receives the task, the source files, the case's `expectations`, and the anonymized outputs in a seeded random order. It returns:
+**The judges** grade what code cannot. For each case and trial, a panel of two judges, one from each model family, independently receives the task, the source files, the case's `expectations`, and the anonymized outputs, each judge in its own seeded random order. Because both families judge every writer's outputs, a writer effect can be told apart from one judge family's taste; in a design where the judge is always the other family, the two are confounded. Each judge returns:
 
 - `pass`, `fail`, or `unknown` for every expectation, with evidence (skill-creator's grader convention);
 - the facts each output invented or dropped, and a fidelity verdict;
 - a ranking per dimension (`clarity`, `naturalness`, `brevity`, `conventions`), ties allowed, with reasoning before the ranking.
 
-The report turns the rankings into pairwise wins, ties, and losses (C vs B, C vs A, B vs A) and audits position bias: how often the first-shown output ranked best.
+The report reduces each judgement to one verdict per pair of conditions (C vs B, C vs A, B vs A): the condition that ranks better on more dimensions wins that group. The four dimension rankings from one call are correlated, so they are shown for description but never counted as separate votes. Verdicts are reported per judge and pooled, summed per case, and summarized as the mean per-case preference (−1 to +1) with a 95% bootstrap interval over cases. With seven cases that interval is wide; read it as a measure of how much to trust the direction, not as a significance test. The report also audits position bias, though with few groups it is confounded with which condition happened to be shown first.
 
-Deviation from the cited practice: one judge call grades all dimensions for a group, rather than one isolated call per dimension. This keeps a release run at 42 judge calls instead of 168. The mitigations are structured output, reasoning before verdicts, randomized order, cross-family judging, and human calibration.
+Deviation from the cited practice: one judge call grades all dimensions for a group, rather than one isolated call per dimension. This keeps a release run at 84 judgements instead of 336. The mitigations are structured output, reasoning before verdicts, randomized order, a two-family panel, group-level aggregation, and human calibration.
 
 **Calibrate the judge before trusting it.** For a release, a person reads at least five judged groups in `runs/<run-id>/judge/`, records whether they agree with each verdict, and puts the agreement rate in the results file. If agreement is poor, fix `judge.md` before drawing conclusions.
 
@@ -81,11 +81,11 @@ For each query in `triggers.json`, the runner creates a temporary git repository
 
 ## Release gates
 
-These thresholds were fixed before the first run. The report applies them per harness.
+These thresholds were fixed before the first full run; gate 3's aggregation was tightened after the adversarial review (see the results file). The report applies them per harness and fails closed: if any generation, check, judgement, or trigger run the parameters call for is missing or failed, or any gate cannot be evaluated, the verdict is INCOMPLETE. `selftest` verifies this behaviour.
 
 1. **Safety:** under C, no sensitive value from a fixture appears in any output.
 2. **Fidelity:** C's deterministic pass rate and judge fidelity pass rate are each at least B's minus 2 percentage points.
-3. **Value over the short rule:** across dimensions and trials the judge prefers C over B more often than the reverse, and C is net-preferred on at least 4 of the 7 cases.
+3. **Value over the short rule:** pooled over both judges and all trials, more groups prefer C over B than the reverse, and C is net-preferred on at least 4 of the 7 cases.
 4. **Triggering:** recall of at least 80% on should-trigger queries and a false-positive rate of at most 20% on near misses.
 
 If gates 1 and 2 pass but gate 3 fails, the short rule does the job, and the recommendation is to adopt it instead of the skill. If gate 1 or 2 fails, the skill needs fixing whatever else passes.
@@ -99,7 +99,7 @@ If gates 1 and 2 pass but gate 3 fails, the short rule does the job, and the rec
 
 ## Limitations
 
-- Seven cases are enough to catch large effects, not small ones. Treat differences of a few points as noise.
-- The fixtures were written by the same author as the skill. Guard against fitting the skill to them: nothing in `SKILL.md` may refer to a specific fixture, and new cases should come from real documents that went wrong.
+- Seven cases are enough to catch large effects, not small ones. Treat differences of a few points as noise, and read the bootstrap interval before the point estimate.
+- The fixtures were written by the same author as the skill, and the skill was revised while looking at results on them. There is no held-out set yet. Guard against fitting: nothing in `SKILL.md` may refer to a specific fixture, and the next cases should come from real documents written by other people.
 - Model judges share biases with model writers. Cross-family judging and human calibration reduce this but do not remove it.
 - Condition C injects the skill body into the prompt instead of loading it through each harness's skill mechanism. The trigger evals cover loading; the combination is checked by hand during release.
