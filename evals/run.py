@@ -406,6 +406,7 @@ def cmd_selftest(_args) -> int:
         print(f"{'ok  ' if ok else 'FAIL'} {case['name']}: reference fails {ref_failures or 'none'}; "
               f"raw input fails {len(raw_failures)}/{len(case['checks'])} checks")
     errors += selftest_gates()
+    errors += selftest_partial_judgement()
     print("selftest: ok" if not errors else f"selftest: {errors} failure(s)")
     return 1 if errors else 0
 
@@ -435,6 +436,29 @@ def selftest_gates() -> int:
         ok = f"**Verdict:** {expected}" in verdict
         failures += not ok
         print(f"{'ok  ' if ok else 'FAIL'} gates, {name}: {verdict.removeprefix('**Verdict:** ')}")
+    return failures
+
+
+def selftest_partial_judgement() -> int:
+    """A group judged while one output was missing must count as missing until it is redone."""
+    case = load_cases()[0]
+    args = argparse.Namespace(harness=["claude"], conditions=["A", "B", "C"], trials=1,
+                              judge_harness="claude", trigger_runs=0)
+    keys = [{"harness": "claude", "case": case["name"], "condition": c, "trial": 1, "ok": True}
+            for c in args.conditions]
+    failures = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        run = Path(tmp)
+        path = judge_path(run, "claude", case, "t1", "claude")
+        path.parent.mkdir(parents=True)
+        for mapping, expect_missing in (({"R1": "B", "R2": "C"}, True),
+                                        ({"R1": "B", "R2": "C", "R3": "A"}, False)):
+            path.write_text(json.dumps({"mapping": mapping}), encoding="utf-8")
+            missing = missing_results(args, run, [case], keys, keys, [])
+            ok = bool(missing) == expect_missing
+            failures += not ok
+            print(f"{'ok  ' if ok else 'FAIL'} judgement over {','.join(sorted(mapping.values()))}: "
+                  f"{'counted missing' if missing else 'complete'}")
     return failures
 
 
@@ -507,6 +531,12 @@ def judge_path(run: Path, harness: str, case: dict, trial_name: str, judge: str)
     return run / "judge" / harness / case["name"] / trial_name / f"{judge}.json"
 
 
+def judged_conditions(path: Path) -> set[str]:
+    """Conditions a stored judgement compared. A group judged while an output was missing
+    covers fewer than the run expects, and must be redone once the output exists."""
+    return set(load_json(path)["mapping"].values()) if path.exists() else set()
+
+
 def cmd_judge(args, opts: HarnessOptions) -> None:
     run = run_dir(args.run_id, must_exist=True)
     judge_opts = opts.with_effort(args.judge_effort)
@@ -525,7 +555,7 @@ def cmd_judge(args, opts: HarnessOptions) -> None:
                     continue
                 for judge in judges_for(harness, args.judge_harness):
                     out = judge_path(run, harness, case, trial_name, judge)
-                    if not out.exists():
+                    if judged_conditions(out) != set(outputs):
                         tasks.append(lambda h=harness, c=case, t=trial_name, o=outputs, j=judge, f=out:
                                      judge_one(args.run_id, h, c, t, o, j, f, judge_opts))
     print(f"judge: {len(tasks)} judgement(s) to make")
@@ -731,8 +761,10 @@ def missing_results(args, run: Path, cases: list[dict], metas: list[dict], check
                     elif key not in checked:
                         missing.append(f"checks {harness}/{case['name']}/{cond}/t{trial}")
                 for judge in judges_for(harness, args.judge_harness):
-                    if not judge_path(run, harness, case, f"t{trial}", judge).exists():
-                        missing.append(f"judgement {harness}/{case['name']}/t{trial} by {judge}")
+                    seen = judged_conditions(judge_path(run, harness, case, f"t{trial}", judge))
+                    if seen != set(args.conditions):
+                        partial = f" (saw only {','.join(sorted(seen))})" if seen else ""
+                        missing.append(f"judgement {harness}/{case['name']}/t{trial} by {judge}{partial}")
         for index in range(1, n_queries + 1):
             for attempt in range(1, args.trigger_runs + 1):
                 if (harness, index, attempt) not in trigger_keys:
