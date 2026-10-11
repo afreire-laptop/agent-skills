@@ -66,13 +66,16 @@ CHANGELOG.md                                 release history
 
 ## Versioning
 
-Versions follow [Semantic Versioning](https://semver.org/), applied to the skill's behaviour:
+Versions follow [Semantic Versioning](https://semver.org/), applied to the skill's behaviour. Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), and the commit type sets the version:
 
-| Change | Version |
-|---|---|
-| Artifacts added to or dropped from the description, or a guarantee in "Keep the facts" removed or weakened | Major |
-| New behaviour or artifact guidance that users would notice in their output | Minor |
-| Wording that keeps the behaviour, or eval-only changes | Patch |
+| Change | Commit | Version |
+|---|---|---|
+| Artifacts added to or dropped from the description, or a guarantee in "Keep the facts" removed or weakened | `feat(skill)!:`, or a `BREAKING CHANGE:` footer | Major |
+| New behaviour or artifact guidance that users would notice in their output | `feat(skill):` | Minor |
+| Wording that keeps the behaviour | `fix(skill):` | Patch |
+| Evals, docs, or CI only | `test`, `docs`, `ci`, `build`, `refactor`, or `chore` | None |
+
+Changes outside `skills/` make no release because installs copy only the skill directory. CI rejects a commit that changes `skills/` with a type that makes no release, and a commit that makes a release without changing `skills/`.
 
 Git tags and [`CHANGELOG.md`](CHANGELOG.md) record versions. The frontmatter has no version field.
 
