@@ -26,3 +26,7 @@ jobs:
         run: uv run --locked evals/run.py lint
       - name: Check the graders and release gates
         run: uv run --locked evals/run.py selftest
+      - name: Type-check the runner
+        run: >-
+          uvx mypy==2.3.1 --strict --python-version ${{ matrix.python }}
+          --python-executable "$(uv python find --script evals/run.py)" evals/run.py

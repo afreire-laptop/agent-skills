@@ -28,6 +28,9 @@ They follow the practices in Anthropic's [skill authoring guide](https://platfor
 uv run evals/run.py lint        # skill frontmatter, budgets, eval data
 uv run evals/run.py selftest    # graders: references pass, raw inputs fail
 
+# Type-check the runner, as CI does.
+uvx mypy==2.3.1 --strict --python-executable "$(uv python find --script evals/run.py)" evals/run.py
+
 # Smoke run: one trial, 42 generations, 28 judgements, 40 trigger runs.
 uv run evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
 
