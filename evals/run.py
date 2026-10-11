@@ -265,6 +265,96 @@ class TriggerOutcome(Model):
     discovered: bool | None
 
 
+class GenerationMeta(External):
+    """gen/<harness>/<case>/<condition>/t<n>/meta.json."""
+
+    ok: bool
+    harness: str
+    case: str
+    condition: str
+    trial: int
+    prompt_sha: str | None = None
+    model: str | None = None
+    usage: Usage = Field(default_factory=dict)
+    duration_s: float | None = None
+    output_words: int
+    error: str | None = None
+
+
+class CheckRow(External):
+    """One entry of checks.json."""
+
+    harness: str
+    case: str
+    condition: str
+    trial: int
+    check: str
+    passed: bool
+    detail: str
+
+
+CHECK_ROWS = TypeAdapter(tuple[CheckRow, ...])
+
+
+class JudgedConditions(External):
+    """The part of a stored judgement that says which conditions it compared."""
+
+    mapping: Mapping[str, str]
+
+
+class StoredJudgement(JudgedConditions):
+    """judge/<harness>/<case>/t<n>/<judge>.json."""
+
+    judge: str
+    judge_model: str | None = None
+    usage: Usage = Field(default_factory=dict)
+    result: JudgeResult
+
+
+class Judged(Model):
+    """A stored judgement and the group its path names."""
+
+    harness: str
+    case: str
+    trial: str
+    judge: str  # from the file name
+    judgement: StoredJudgement
+
+
+class TriggerRun(External):
+    """triggers/<harness>/q<nn>-r<n>.json."""
+
+    triggered: bool
+    ended: str
+    discovered: bool | None
+    harness: str
+    index: int
+    attempt: int
+    query: str
+    should_trigger: bool
+    duration_s: float | None = None
+
+
+class Invocation(Model):
+    at: str
+    argv: Sequence[str]
+    git_commit: str | None
+    git_dirty: bool
+    skill_sha: str | None
+    short_rule_sha: str
+    cases_sha: str
+    claude_version: str | None
+    codex_version: str | None
+    options: Mapping[str, object]
+
+
+class Manifest(External):
+    """manifest.json. Earlier invocations are kept as they were written."""
+
+    created: str
+    invocations: Sequence[Mapping[str, object]] = ()
+
+
 # --------------------------------------------------------------------------- data
 
 
@@ -272,8 +362,8 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def load_json(path: Path):
-    return json.loads(read_text(path))
+def read_model(model: type[M], path: Path) -> M:
+    return model.model_validate_json(read_text(path))
 
 
 def parsed(model: type[M], raw: object) -> M | None:
@@ -501,17 +591,17 @@ def gen_dir(run: Path, harness: str, case: str, condition: str, trial: int) -> P
     return run / "gen" / harness / case / condition / f"t{trial}"
 
 
-def load_meta(path: Path):
-    meta = path / "meta.json"
-    return load_json(meta) if meta.exists() else None
+def generation_ok(out: Path) -> bool:
+    meta = out / "meta.json"
+    return meta.exists() and read_model(GenerationMeta, meta).ok
 
 
 def generation_meta(harness: str, case: str, condition: str, trial: int, prompt: str,
-                    result: CallResult) -> dict[str, object]:
-    return {"ok": result.ok, "harness": harness, "case": case, "condition": condition,
-            "trial": trial, "prompt_sha": sha256(prompt), "model": result.model,
-            "usage": dict(result.usage), "duration_s": round(result.duration_s, 1),
-            "output_words": word_count(result.text), "error": result.error}
+                    result: CallResult) -> GenerationMeta:
+    return GenerationMeta(ok=result.ok, harness=harness, case=case, condition=condition, trial=trial,
+                          prompt_sha=sha256(prompt), model=result.model, usage=result.usage,
+                          duration_s=round(result.duration_s, 1), output_words=word_count(result.text),
+                          error=result.error)
 
 
 def generate_one(harness: str, case: str, condition: str, trial: int, prompt: str, out: Path,
@@ -520,7 +610,7 @@ def generate_one(harness: str, case: str, condition: str, trial: int, prompt: st
     out.mkdir(parents=True, exist_ok=True)
     (out / "output.md").write_text(result.text, encoding="utf-8")
     meta = generation_meta(harness, case, condition, trial, prompt, result)
-    (out / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (out / "meta.json").write_text(json.dumps(meta.model_dump(), indent=2), encoding="utf-8")
     status = "ok" if result.ok else f"FAILED ({result.error})"
     return f"{harness} {case} {condition} t{trial} {status} {result.duration_s:.0f}s"
 
@@ -540,8 +630,7 @@ def cmd_generate(args: argparse.Namespace, opts: HarnessOptions) -> None:
                 prompt = build_prompt(case, GUIDANCE[condition](guidance), files[case.name])
                 for trial in range(1, args.trials + 1):
                     out = gen_dir(run, harness, case.name, condition, trial)
-                    meta = load_meta(out)
-                    if meta and meta.get("ok"):
+                    if generation_ok(out):
                         continue
                     tasks.append(partial(generate_one, harness, case.name, condition, trial, prompt, out, opts))
     print(f"generate: {len(tasks)} unit(s) to run in {run.relative_to(ROOT)}")
@@ -597,27 +686,27 @@ def input_word_count(files: Sequence[tuple[str, str]]) -> int:
     return sum(word_count(text) for _, text in files)
 
 
-def check_row(meta: Mapping[str, object], case: str, check: str, outcome: tuple[bool, str]) -> dict[str, object]:
+def check_row(meta: GenerationMeta, case: str, check: str, outcome: tuple[bool, str]) -> CheckRow:
     passed, detail = outcome
-    return {"harness": meta["harness"], "case": case, "condition": meta["condition"],
-            "trial": meta["trial"], "check": check, "passed": passed, "detail": detail}
+    return CheckRow(harness=meta.harness, case=case, condition=meta.condition, trial=meta.trial,
+                    check=check, passed=passed, detail=detail)
 
 
-def check_rows(case: Case, meta: Mapping[str, object], text: str, input_words: int) -> list[dict[str, object]]:
+def check_rows(case: Case, meta: GenerationMeta, text: str, input_words: int) -> list[CheckRow]:
     return [check_row(meta, case.name, check.id, run_check(check, text, input_words)) for check in case.checks]
 
 
 def cmd_check(args: argparse.Namespace) -> None:
     run = run_dir(args.run_id, must_exist=True)
-    rows = []
+    rows: list[CheckRow] = []
     for case in load_cases():
         input_words = input_word_count(case_files(case))
         for meta_file in sorted((run / "gen").glob(f"*/{case.name}/*/t*/meta.json")):
-            meta = load_json(meta_file)
-            if meta.get("ok"):
+            meta = read_model(GenerationMeta, meta_file)
+            if meta.ok:
                 rows += check_rows(case, meta, read_text(meta_file.parent / "output.md"), input_words)
-    (run / "checks.json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
-    failed = sum(not r["passed"] for r in rows)
+    (run / "checks.json").write_text(json.dumps([r.model_dump() for r in rows], indent=1), encoding="utf-8")
+    failed = sum(not r.passed for r in rows)
     print(f"check: {len(rows)} results, {failed} failed -> {(run / 'checks.json').relative_to(ROOT)}")
 
 
@@ -654,52 +743,49 @@ def cmd_selftest(_args: argparse.Namespace) -> int:
 
 def selftest_gates() -> int:
     """The release gates must fail closed on partial runs and decide correctly on full ones."""
-    def harness(c_preferred: int, b_preferred: int, cases_preferred: int) -> dict:
-        cond = {"check_pass_rate": 0.97, "fidelity_pass_rate": 0.9, "sensitive_leaks": 0}
-        return {"conditions": {"B": dict(cond), "C": dict(cond)},
-                "C_vs_B": {"groups": {"first": c_preferred, "tie": 0, "second": b_preferred},
-                           "cases_preferred": [f"case{i}" for i in range(cases_preferred)]},
-                "triggers": {"recall": 0.9, "false_positive_rate": 0.1}}
+    def harness(c_preferred: int, b_preferred: int, cases_preferred: int) -> HarnessStats:
+        cond = ConditionStats(check_pass_rate=0.97, check_pass_sd=None, expectation_pass_rate=None,
+                              expectation_unknown=0, fidelity_pass_rate=0.9, sensitive_leaks=0,
+                              mean_input_tokens=None, mean_output_words=None)
+        pair = PairStats(groups=GroupCounts(first=c_preferred, tie=0, second=b_preferred),
+                         cases_preferred=tuple(f"case{i}" for i in range(cases_preferred)),
+                         net_by_case={}, mean_case_preference=0.0, ci95=(0.0, 0.0))
+        return HarnessStats(conditions={"B": cond, "C": cond}, pairs={"C_vs_B": pair},
+                            triggers=TriggerStats(recall=0.9, false_positive_rate=0.1, runs=0, undiscovered_runs=0))
 
     full = {"claude": harness(30, 10, 5), "codex": harness(25, 15, 4)}
-    scenarios = [
+    scenarios: list[tuple[str, dict[str, HarnessStats], list[str], str]] = [
         ("empty run", {}, [], "INCOMPLETE"),
         ("one harness missing", {"claude": full["claude"]}, [], "INCOMPLETE"),
-        ("no judge results", {**full, "codex": {**full["codex"], "C_vs_B": None}}, [], "INCOMPLETE"),
+        ("no judge results", {**full, "codex": full["codex"].model_copy(update={"pairs": {}})}, [], "INCOMPLETE"),
         ("missing generations", full, ["generation codex/x/C/t3"], "INCOMPLETE"),
         ("complete and passing", full, [], "SHIP"),
         ("short rule as good", {**full, "codex": harness(10, 12, 2)}, [], "SIMPLIFY"),
     ]
     failures = 0
-    for name, harnesses, missing, expected in scenarios:
-        lines = gates({"harnesses": json.loads(json.dumps(harnesses))}, 7, list(HARNESSES), missing)
-        verdict = next(l for l in lines if l.startswith("**Verdict:**"))
-        ok = f"**Verdict:** {expected}" in verdict
+    for name, stats, missing, expected in scenarios:
+        _, _, verdict = gates(stats, 7, HARNESSES, missing)
+        ok = verdict.startswith(expected)
         failures += not ok
-        print(f"{'ok  ' if ok else 'FAIL'} gates, {name}: {verdict.removeprefix('**Verdict:** ')}")
+        print(f"{'ok  ' if ok else 'FAIL'} gates, {name}: {verdict}")
     return failures
 
 
 def selftest_partial_judgement() -> int:
     """A group judged while one output was missing must count as missing until it is redone."""
-    case = load_cases()[0]
-    args = argparse.Namespace(harness=["claude"], conditions=["A", "B", "C"], trials=1,
-                              judge_harness="claude", trigger_runs=0)
-    keys = [{"harness": "claude", "case": case.name, "condition": c, "trial": 1, "ok": True}
-            for c in args.conditions]
+    case = load_cases()[0].name
+    params = ReportParams(run_id="selftest", harnesses=("claude",), conditions=("A", "B", "C"), trials=1,
+                          judge_harness="claude", trigger_runs=0)
+    complete = {("claude", case, c, 1) for c in params.conditions}
     failures = 0
-    with tempfile.TemporaryDirectory() as tmp:
-        run = Path(tmp)
-        path = judge_path(run, "claude", case.name, "t1", "claude")
-        path.parent.mkdir(parents=True)
-        for mapping, expect_missing in (({"R1": "B", "R2": "C"}, True),
-                                        ({"R1": "B", "R2": "C", "R3": "A"}, False)):
-            path.write_text(json.dumps({"mapping": mapping}), encoding="utf-8")
-            missing = missing_results(args, run, [case], keys, keys, [])
-            ok = bool(missing) == expect_missing
-            failures += not ok
-            print(f"{'ok  ' if ok else 'FAIL'} judgement over {','.join(sorted(mapping.values()))}: "
-                  f"{'counted missing' if missing else 'complete'}")
+    for mapping, expect_missing in (({"R1": "B", "R2": "C"}, True),
+                                    ({"R1": "B", "R2": "C", "R3": "A"}, False)):
+        judged = {("claude", case, "t1", "claude"): set(mapping.values())}
+        missing = missing_results(params, [case], complete, complete, judged, set(), len(load_triggers()))
+        ok = bool(missing) == expect_missing
+        failures += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} judgement over {','.join(sorted(mapping.values()))}: "
+              f"{'counted missing' if missing else 'complete'}")
     return failures
 
 
@@ -803,7 +889,8 @@ JUDGE_MODES: Mapping[str, Callable[[str], list[str]]] = {
 
 def judges_for(harness: str, mode: str) -> list[str]:
     """The judges for one writer's groups: a mode from JUDGE_MODES, or one named harness."""
-    return JUDGE_MODES.get(mode, lambda _: [mode])(harness)
+    judges = JUDGE_MODES.get(mode)
+    return judges(harness) if judges else [mode]
 
 
 def judge_path(run: Path, harness: str, case: str, trial_name: str, judge: str) -> Path:
@@ -813,7 +900,7 @@ def judge_path(run: Path, harness: str, case: str, trial_name: str, judge: str) 
 def judged_conditions(path: Path) -> set[str]:
     """Conditions a stored judgement compared. A group judged while an output was missing
     covers fewer than the run expects, and must be redone once the output exists."""
-    return set(load_json(path)["mapping"].values()) if path.exists() else set()
+    return set(read_model(JudgedConditions, path).mapping.values()) if path.exists() else set()
 
 
 def blind_mapping(seed: str, conditions: Iterable[str]) -> dict[str, str]:
@@ -852,8 +939,7 @@ def cmd_judge(args: argparse.Namespace, opts: HarnessOptions) -> None:
                 outputs = {}
                 for condition in args.conditions:
                     out_dir = gen_dir(run, harness, case.name, condition, trial)
-                    meta = load_meta(out_dir)
-                    if meta and meta.get("ok"):
+                    if generation_ok(out_dir):
                         outputs[condition] = read_text(out_dir / "output.md")
                 if len(outputs) < 2:
                     continue
@@ -965,10 +1051,10 @@ def trigger_one(harness: str, index: int, attempt: int, item: TriggerQuery, out:
         subprocess.run(["git", "init", "-q", project], check=True)
         start = time.monotonic()
         outcome = HARNESS[harness].trigger(item.query, project, opts)
-    result = {**outcome.model_dump(), "harness": harness, "index": index, "attempt": attempt, "query": item.query,
-              "should_trigger": item.should_trigger, "duration_s": round(time.monotonic() - start, 1)}
+    result = TriggerRun(**outcome.model_dump(), harness=harness, index=index, attempt=attempt, query=item.query,
+                        should_trigger=item.should_trigger, duration_s=round(time.monotonic() - start, 1))
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    out.write_text(json.dumps(result.model_dump(), indent=2), encoding="utf-8")
     mark = "hit" if outcome.triggered == item.should_trigger else "MISS"
     return f"{harness} q{index} r{attempt} triggered={outcome.triggered} {mark} ({outcome.ended})"
 
@@ -993,11 +1079,78 @@ def cmd_triggers(args: argparse.Namespace, opts: HarnessOptions) -> None:
 # -------------------------------------------------------------------------- report
 
 
-def mean(values: list[float]) -> float | None:
+class ReportParams(Model):
+    """What a run was asked to produce, from the command line."""
+
+    run_id: str
+    harnesses: tuple[str, ...]
+    conditions: tuple[str, ...]
+    trials: int
+    judge_harness: str
+    trigger_runs: int
+
+
+class ConditionStats(Model):
+    check_pass_rate: float | None
+    check_pass_sd: float | None
+    expectation_pass_rate: float | None
+    expectation_unknown: int
+    fidelity_pass_rate: float | None
+    sensitive_leaks: int
+    mean_input_tokens: float | None
+    mean_output_words: float | None
+
+
+class GroupCounts(Model):
+    first: int
+    tie: int
+    second: int
+
+
+class PairStats(Model):
+    groups: GroupCounts
+    cases_preferred: tuple[str, ...]
+    net_by_case: Mapping[str, int]
+    mean_case_preference: float
+    ci95: tuple[float, float]
+
+
+class TriggerStats(Model):
+    recall: float | None
+    false_positive_rate: float | None
+    runs: int
+    undiscovered_runs: int
+
+
+class HarnessStats(Model):
+    """Everything the gates read for one writer, and what report.json records."""
+
+    conditions: Mapping[str, ConditionStats]
+    overhead: Mapping[str, float] = Field(default_factory=dict)  # input tokens over A, per condition
+    pairs: Mapping[str, PairStats] = Field(default_factory=dict)  # "C_vs_B" and so on
+    triggers: TriggerStats | None = None
+
+
+PAIRS = (("C", "B"), ("C", "A"), ("B", "A"))
+VERDICT_MARKS: Mapping[int | None, str] = {1: "X", -1: "Y", 0: "tie", None: "–"}
+
+K = TypeVar("K")
+V = TypeVar("V")
+
+
+def grouped(pairs: Iterable[tuple[K, V]]) -> dict[K, list[V]]:
+    """Values grouped by key, keys in order of first appearance."""
+    groups: dict[K, list[V]] = {}
+    for key, value in pairs:
+        groups.setdefault(key, []).append(value)
+    return groups
+
+
+def mean(values: Sequence[float]) -> float | None:
     return statistics.fmean(values) if values else None
 
 
-def stdev(values: list[float]) -> float | None:
+def stdev(values: Sequence[float]) -> float | None:
     return statistics.stdev(values) if len(values) > 1 else None
 
 
@@ -1007,40 +1160,45 @@ def fmt(value: float | None, pct: bool = True) -> str:
     return f"{value * 100:.0f}%" if pct else f"{value:,.0f}"
 
 
-def fmt_mean_sd(values: list[float]) -> str:
+def fmt_mean_sd(values: Sequence[float]) -> str:
     m, s = mean(values), stdev(values)
     return fmt(m) if s is None else f"{fmt(m)} ± {s * 100:.0f}"
 
 
-def group_verdict(judgement: dict, first: str, second: str) -> int | None:
+def pass_rate(rows: Sequence[CheckRow]) -> float:
+    return sum(r.passed for r in rows) / len(rows)
+
+
+def ranks_of(judgement: StoredJudgement, first: str, second: str) -> list[tuple[int, int]] | None:
+    """(rank of first, rank of second) per dimension; None if the judgement lacks either."""
+    label_of = {cond: label for label, cond in judgement.mapping.items()}
+    if first not in label_of or second not in label_of:
+        return None
+    return [(ranks[label_of[first]], ranks[label_of[second]])
+            for ranks in ({r.label: r.rank for r in dim.ranks} for dim in judgement.result.dimensions)]
+
+
+def group_verdict(judgement: StoredJudgement, first: str, second: str) -> int | None:
     """One verdict per judged group: +1 if `first` beats `second` on more dimensions than
     it loses, -1 for the reverse, 0 otherwise. Dimensions from one call are correlated,
     so they are not counted as separate votes."""
-    label_of = {cond: label for label, cond in judgement["mapping"].items()}
-    if first not in label_of or second not in label_of:
+    ranks = ranks_of(judgement, first, second)
+    if ranks is None:
         return None
-    wins = losses = 0
-    for dim in judgement["result"]["dimensions"]:
-        ranks = {r["label"]: r["rank"] for r in dim["ranks"]}
-        a, b = ranks[label_of[first]], ranks[label_of[second]]
-        wins, losses = wins + (a < b), losses + (a > b)
+    wins, losses = sum(a < b for a, b in ranks), sum(a > b for a, b in ranks)
     return (wins > losses) - (wins < losses)
 
 
-def dimension_counts(judgements: list[dict], first: str, second: str) -> dict[str, list[int]]:
-    counts = {d: [0, 0, 0] for d in DIMENSIONS}
+def dimension_counts(judgements: Sequence[Judged], first: str, second: str) -> dict[str, list[int]]:
+    counts: dict[str, list[int]] = {d: [0, 0, 0] for d in DIMENSIONS}
     for j in judgements:
-        label_of = {cond: label for label, cond in j["mapping"].items()}
-        if first not in label_of or second not in label_of:
-            continue
-        for dim in j["result"]["dimensions"]:
-            ranks = {r["label"]: r["rank"] for r in dim["ranks"]}
-            a, b = ranks[label_of[first]], ranks[label_of[second]]
-            counts[dim["dimension"]][0 if a < b else 1 if a == b else 2] += 1
+        dims = j.judgement.result.dimensions
+        for dim, (a, b) in zip(dims, ranks_of(j.judgement, first, second) or []):
+            counts[dim.dimension][0 if a < b else 1 if a == b else 2] += 1
     return counts
 
 
-def bootstrap_ci(per_case: dict[str, list[int]], seed: str, rounds: int = 2000) -> tuple[float, float, float]:
+def bootstrap_ci(per_case: Mapping[str, Sequence[int]], seed: str, rounds: int = 2000) -> tuple[float, float, float]:
     """Mean per-case preference (-1..1) with a 95% bootstrap interval, resampling cases."""
     case_means = [statistics.fmean(v) for v in per_case.values()]
     rng = random.Random(seed)
@@ -1048,249 +1206,329 @@ def bootstrap_ci(per_case: dict[str, list[int]], seed: str, rounds: int = 2000) 
     return statistics.fmean(case_means), stats[int(0.025 * rounds)], stats[int(0.975 * rounds) - 1]
 
 
-def missing_results(args, run: Path, cases: Sequence[Case], metas: list[dict], checks: list[dict],
-                    triggers: list[dict]) -> list[str]:
+GroupKey = tuple[str, str, str, int]  # harness, case, condition, trial
+JudgeKey = tuple[str, str, str, str]  # harness, case, trial name, judge
+
+
+def missing_results(params: ReportParams, cases: Sequence[str], generated: set[GroupKey], checked: set[GroupKey],
+                    judged: Mapping[JudgeKey, set[str]], trigger_runs: set[tuple[str, int, int]],
+                    n_queries: int) -> list[str]:
     """Everything the documented gates need, given this run's parameters."""
-    missing = []
-    ok = {(m["harness"], m["case"], m["condition"], m["trial"]) for m in metas if m["ok"]}
-    checked = {(c["harness"], c["case"], c["condition"], c["trial"]) for c in checks}
-    trigger_keys = {(t["harness"], t["index"], t["attempt"]) for t in triggers}
-    n_queries = len(load_triggers())
-    for harness in args.harness:
-        for case in cases:
-            for trial in range(1, args.trials + 1):
-                for cond in args.conditions:
-                    key = (harness, case.name, cond, trial)
-                    if key not in ok:
-                        missing.append(f"generation {harness}/{case.name}/{cond}/t{trial}")
-                    elif key not in checked:
-                        missing.append(f"checks {harness}/{case.name}/{cond}/t{trial}")
-                for judge in judges_for(harness, args.judge_harness):
-                    seen = judged_conditions(judge_path(run, harness, case.name, f"t{trial}", judge))
-                    if seen != set(args.conditions):
-                        partial = f" (saw only {','.join(sorted(seen))})" if seen else ""
-                        missing.append(f"judgement {harness}/{case.name}/t{trial} by {judge}{partial}")
-        for index in range(1, n_queries + 1):
-            for attempt in range(1, args.trigger_runs + 1):
-                if (harness, index, attempt) not in trigger_keys:
-                    missing.append(f"trigger {harness}/q{index}/r{attempt}")
-    return missing
-
-
-def cmd_report(args) -> int:
-    run = run_dir(args.run_id, must_exist=True)
-    cases = cases_or_exit(args.cases)
-    case_names = {c.name for c in cases}
-    metas = [m for m in (load_json(p) for p in sorted((run / "gen").glob("*/*/*/t*/meta.json")))
-             if m["harness"] in args.harness and m["case"] in case_names and m["condition"] in args.conditions]
-    checks = [c for c in (load_json(run / "checks.json") if (run / "checks.json").exists() else [])
-              if c["harness"] in args.harness and c["case"] in case_names and c["condition"] in args.conditions]
-    judgements = []
-    for path in sorted((run / "judge").glob("*/*/t*/*.json")):
-        data = load_json(path)
-        data.update({"harness": path.parts[-4], "case": path.parts[-3], "trial": path.parts[-2]})
-        if data["harness"] in args.harness and data["case"] in case_names:
-            judgements.append(data)
-    triggers = [t for t in (load_json(p) for p in sorted((run / "triggers").glob("*/q*.json")))
-                if t["harness"] in args.harness]
-    conditions = [c for c in CONDITIONS if c in args.conditions]
-
-    summary: dict = {"run_id": args.run_id, "harnesses": {}}
-    lines = [f"# Eval report: {args.run_id}", "",
-             f"Manifest: `{(run / 'manifest.json').relative_to(ROOT)}`. Expected: {len(cases)} cases × "
-             f"{len(conditions)} conditions × {args.trials} trials per harness ({', '.join(args.harness)}), "
-             f"judges: {args.judge_harness}, {args.trigger_runs} trigger runs per query.", ""]
-
-    for harness in args.harness:
-        h_metas = [m for m in metas if m["harness"] == harness]
-        h_checks = [c for c in checks if c["harness"] == harness]
-        h_judge = [j for j in judgements if j["harness"] == harness]
-        h_sum: dict = {"conditions": {}}
-        summary["harnesses"][harness] = h_sum
-        lines += [f"## {harness}", ""]
-        models = sorted({m.get("model") or "default" for m in h_metas})
-        judges = sorted({f"{j['judge']} ({j.get('judge_model') or 'default'})" for j in h_judge})
-        lines += [f"Writer model: {', '.join(models) or '–'}. Judges: {', '.join(judges) or 'none'}. "
-                  f"Failed generations: {sum(not m['ok'] for m in h_metas)}.", "",
-                  "| Condition | Checks passed (mean ± sd over trials) | Expectations passed (judges) "
-                  "| Fidelity passed (judges) | Sensitive leaks | Input tokens | Output words |",
-                  "|---|---|---|---|---|---|---|"]
-        for cond in conditions:
-            c_checks = [c for c in h_checks if c["condition"] == cond]
-            per_trial = []
-            for trial in sorted({c["trial"] for c in c_checks}):
-                rows = [c for c in c_checks if c["trial"] == trial]
-                per_trial.append(sum(r["passed"] for r in rows) / len(rows))
-            verdicts, fidelity = [], []
-            for j in h_judge:
-                label = next((l for l, c in j["mapping"].items() if c == cond), None)
-                response = next((r for r in j["result"]["responses"] if r["label"] == label), None)
-                if response:
-                    verdicts += [e["verdict"] for e in response["expectations"]]
-                    fidelity.append(float(response["fidelity"] == "pass"))
-            known = [v for v in verdicts if v != "unknown"]
-            c_metas = [m for m in h_metas if m["condition"] == cond and m["ok"]]
-            leaks = sum(1 for c in c_checks if c["check"] in SENSITIVE_CHECKS and not c["passed"])
-            row = {
-                "check_pass_rate": mean(per_trial), "check_pass_sd": stdev(per_trial),
-                "expectation_pass_rate": (sum(v == "pass" for v in known) / len(known)) if known else None,
-                "expectation_unknown": verdicts.count("unknown"),
-                "fidelity_pass_rate": mean(fidelity),
-                "sensitive_leaks": leaks,
-                "mean_input_tokens": mean([m["usage"].get("input_tokens", 0) for m in c_metas]),
-                "mean_output_words": mean([m["output_words"] for m in c_metas]),
-            }
-            h_sum["conditions"][cond] = row
-            lines.append(f"| {cond} ({CONDITIONS[cond]}) | {fmt_mean_sd(per_trial)} "
-                         f"| {fmt(row['expectation_pass_rate'])} | {fmt(row['fidelity_pass_rate'])} "
-                         f"| {leaks} | {fmt(row['mean_input_tokens'], False)} "
-                         f"| {fmt(row['mean_output_words'], False)} |")
-        lines.append("")
-        base = h_sum["conditions"].get("A", {}).get("mean_input_tokens")
-        for cond in ("B", "C"):
-            tokens = h_sum["conditions"].get(cond, {}).get("mean_input_tokens")
-            if base and tokens:
-                h_sum["conditions"][cond]["guidance_overhead_tokens"] = tokens - base
-                lines.append(f"Measured guidance overhead, {cond} vs A: {tokens - base:,.0f} input tokens per call.")
-        lines.append("")
-
-        if h_checks:
-            lines += ["| Case | " + " | ".join(f"{c} checks" for c in conditions) + " | Failing checks under C |",
-                      "|---|" + "---|" * len(conditions) + "---|"]
+    def missing() -> Iterator[str]:
+        for harness in params.harnesses:
             for case in cases:
-                cells = []
-                for cond in conditions:
-                    rows = [c for c in h_checks if c["case"] == case.name and c["condition"] == cond]
-                    cells.append(fmt(sum(r["passed"] for r in rows) / len(rows)) if rows else "–")
-                failing = sorted({c["check"] for c in h_checks if c["case"] == case.name
-                                  and c["condition"] == "C" and not c["passed"]})
-                lines.append(f"| {case.name} | " + " | ".join(cells) + f" | {', '.join(failing) or '–'} |")
-            lines.append("")
+                for trial in range(1, params.trials + 1):
+                    for cond in params.conditions:
+                        key = (harness, case, cond, trial)
+                        if key not in generated:
+                            yield f"generation {harness}/{case}/{cond}/t{trial}"
+                        elif key not in checked:
+                            yield f"checks {harness}/{case}/{cond}/t{trial}"
+                    for judge in judges_for(harness, params.judge_harness):
+                        seen = judged.get((harness, case, f"t{trial}", judge), set())
+                        if seen != set(params.conditions):
+                            partial = f" (saw only {','.join(sorted(seen))})" if seen else ""
+                            yield f"judgement {harness}/{case}/t{trial} by {judge}{partial}"
+            for index in range(1, n_queries + 1):
+                for attempt in range(1, params.trigger_runs + 1):
+                    if (harness, index, attempt) not in trigger_runs:
+                        yield f"trigger {harness}/q{index}/r{attempt}"
+    return list(missing())
 
-        for first, second in (("C", "B"), ("C", "A"), ("B", "A")):
-            rows, per_case, pooled = [], {}, [0, 0, 0]
-            for judge in sorted({j["judge"] for j in h_judge}):
-                tally = [0, 0, 0]
-                for j in (x for x in h_judge if x["judge"] == judge):
-                    v = group_verdict(j, first, second)
-                    if v is None:
-                        continue
-                    tally[1 - v] += 1
-                    per_case.setdefault(j["case"], []).append(v)
-                pooled = [a + b for a, b in zip(pooled, tally)]
-                rows.append(f"| {judge} | {tally[0]} | {tally[1]} | {tally[2]} |")
-            if not per_case:
-                continue
-            preferred = sorted(k for k, v in per_case.items() if sum(v) > 0)
-            point, low, high = bootstrap_ci(per_case, f"{args.run_id}:{harness}:{first}{second}")
-            h_sum[f"{first}_vs_{second}"] = {
-                "groups": {"first": pooled[0], "tie": pooled[1], "second": pooled[2]},
-                "cases_preferred": preferred, "net_by_case": {k: sum(v) for k, v in per_case.items()},
-                "mean_case_preference": point, "ci95": [low, high]}
-            lines += [f"Judge verdicts, {first} vs {second}, one per judged group:", "",
-                      f"| Judge | {first} preferred | Tie | {second} preferred |", "|---|---|---|---|", *rows,
-                      f"| pooled | {pooled[0]} | {pooled[1]} | {pooled[2]} |", "",
-                      f"{first} net-preferred on {len(preferred)} of {len(per_case)} cases"
-                      + (f" ({', '.join(preferred)})" if preferred else "")
-                      + f". Mean per-case preference {point:+.2f} on a −1 to +1 scale, "
-                      f"95% bootstrap interval {low:+.2f} to {high:+.2f}.", ""]
-            if (first, second) == ("C", "B"):
-                dims = dimension_counts(h_judge, "C", "B")
-                lines += ["C vs B by dimension (descriptive; dimensions from one call are correlated):", "",
-                          "| Dimension | C better | Tie | B better |", "|---|---|---|---|"]
-                lines += [f"| {d} | {w} | {t} | {l} |" for d, (w, t, l) in dims.items()] + [""]
 
-        for judge in sorted({j["judge"] for j in h_judge}):
-            mine = [j for j in h_judge if j["judge"] == judge]
-            firsts = [float(min(r["rank"] for r in d["ranks"]) ==
-                            next(r["rank"] for r in d["ranks"] if r["label"] == "R1"))
-                      for j in mine for d in j["result"]["dimensions"]]
-            lines.append(f"Position audit, {judge}: first-shown response ranked best (ties included) in "
-                         f"{fmt(mean(firsts))} of dimension judgements; at least {fmt(1 / len(conditions))} "
-                         f"is expected without bias. With few groups this is confounded with which condition "
-                         f"happened to be shown first.")
-        lines.append("")
+def writer_line(metas: Sequence[GenerationMeta], judgements: Sequence[Judged]) -> str:
+    models = sorted({m.model or "default" for m in metas})
+    judges = sorted({f"{j.judgement.judge} ({j.judgement.judge_model or 'default'})" for j in judgements})
+    return (f"Writer model: {', '.join(models) or '–'}. Judges: {', '.join(judges) or 'none'}. "
+            f"Failed generations: {sum(not m.ok for m in metas)}.")
 
-        h_trig = [t for t in triggers if t["harness"] == harness]
-        if h_trig:
-            pos = [float(t["triggered"]) for t in h_trig if t["should_trigger"]]
-            neg = [float(t["triggered"]) for t in h_trig if not t["should_trigger"]]
-            undiscovered = sum(1 for t in h_trig if t.get("discovered") is False)
-            h_sum["triggers"] = {"recall": mean(pos), "false_positive_rate": mean(neg), "runs": len(h_trig),
-                                 "undiscovered_runs": undiscovered}
-            lines += [f"Triggering: recall {fmt(mean(pos))} on should-trigger queries, false-positive rate "
-                      f"{fmt(mean(neg))} on near misses ({len(h_trig)} runs"
-                      + (f"; skill not discovered in {undiscovered} runs" if undiscovered else "") + ").", "",
-                      "| # | Expected | Trigger rate | Query |", "|---|---|---|---|"]
-            for index in sorted({t["index"] for t in h_trig}):
-                runs = [t for t in h_trig if t["index"] == index]
-                rate = mean([float(t["triggered"]) for t in runs])
-                flag = "" if (rate >= 0.5) == runs[0]["should_trigger"] else " ⚠"
-                query = runs[0]["query"][:90] + ("…" if len(runs[0]["query"]) > 90 else "")
-                lines.append(f"| {index} | {'yes' if runs[0]['should_trigger'] else 'no'} "
-                             f"| {fmt(rate)}{flag} | {query} |")
-            lines.append("")
 
-    missing = missing_results(args, run, cases, metas, checks, triggers)
-    lines += gates(summary, len(cases), args.harness, missing)
+def response_for(judged: Judged, condition: str) -> ResponseGrade | None:
+    label = next((l for l, c in judged.judgement.mapping.items() if c == condition), None)
+    return next((r for r in judged.judgement.result.responses if r.label == label), None)
+
+
+def condition_stats(cond: str, checks: Sequence[CheckRow], judgements: Sequence[Judged],
+                    metas: Sequence[GenerationMeta]) -> tuple[ConditionStats, list[float]]:
+    """A condition's row, and its per-trial check pass rates."""
+    c_checks = [c for c in checks if c.condition == cond]
+    per_trial = [pass_rate([c for c in c_checks if c.trial == trial]) for trial in sorted({c.trial for c in c_checks})]
+    responses = [r for r in (response_for(j, cond) for j in judgements) if r is not None]
+    verdicts = [e.verdict for r in responses for e in r.expectations]
+    known = [v for v in verdicts if v != "unknown"]
+    c_metas = [m for m in metas if m.condition == cond and m.ok]
+    return ConditionStats(
+        check_pass_rate=mean(per_trial), check_pass_sd=stdev(per_trial),
+        expectation_pass_rate=(sum(v == "pass" for v in known) / len(known)) if known else None,
+        expectation_unknown=verdicts.count("unknown"),
+        fidelity_pass_rate=mean([float(r.fidelity == "pass") for r in responses]),
+        sensitive_leaks=sum(1 for c in c_checks if c.check in SENSITIVE_CHECKS and not c.passed),
+        mean_input_tokens=mean([m.usage.get("input_tokens", 0) or 0 for m in c_metas]),
+        mean_output_words=mean([m.output_words for m in c_metas]),
+    ), per_trial
+
+
+def condition_table(conditions: Sequence[str], checks: Sequence[CheckRow], judgements: Sequence[Judged],
+                    metas: Sequence[GenerationMeta]) -> tuple[list[str], dict[str, ConditionStats]]:
+    lines = ["| Condition | Checks passed (mean ± sd over trials) | Expectations passed (judges) "
+             "| Fidelity passed (judges) | Sensitive leaks | Input tokens | Output words |",
+             "|---|---|---|---|---|---|---|"]
+    stats: dict[str, ConditionStats] = {}
+    for cond in conditions:
+        row, per_trial = condition_stats(cond, checks, judgements, metas)
+        stats[cond] = row
+        lines.append(f"| {cond} ({CONDITIONS[cond]}) | {fmt_mean_sd(per_trial)} "
+                     f"| {fmt(row.expectation_pass_rate)} | {fmt(row.fidelity_pass_rate)} "
+                     f"| {row.sensitive_leaks} | {fmt(row.mean_input_tokens, False)} "
+                     f"| {fmt(row.mean_output_words, False)} |")
+    return lines + [""], stats
+
+
+def guidance_overhead(stats: Mapping[str, ConditionStats]) -> dict[str, float]:
+    """Measured input tokens of B and C over A."""
+    base = stats["A"].mean_input_tokens if "A" in stats else None
+    tokens = {cond: stats[cond].mean_input_tokens for cond in ("B", "C") if cond in stats}
+    return {cond: t - base for cond, t in tokens.items() if base and t}
+
+
+def case_check_table(cases: Sequence[str], conditions: Sequence[str], checks: Sequence[CheckRow]) -> list[str]:
+    def cell(case: str, cond: str) -> str:
+        rows = [c for c in checks if c.case == case and c.condition == cond]
+        return fmt(pass_rate(rows)) if rows else "–"
+
+    def failing(case: str) -> str:
+        return ", ".join(sorted({c.check for c in checks if c.case == case and c.condition == "C" and not c.passed}))
+
+    return (["| Case | " + " | ".join(f"{c} checks" for c in conditions) + " | Failing checks under C |",
+             "|---|" + "---|" * len(conditions) + "---|"]
+            + [f"| {case} | " + " | ".join(cell(case, cond) for cond in conditions) + f" | {failing(case) or '–'} |"
+               for case in cases]
+            + [""])
+
+
+def pair_section(run_id: str, harness: str, first: str, second: str,
+                 judgements: Sequence[Judged]) -> tuple[list[str], PairStats | None]:
+    judges = sorted({j.judgement.judge for j in judgements})
+    verdicts = {judge: [(j.case, v) for j in judgements if j.judgement.judge == judge
+                        if (v := group_verdict(j.judgement, first, second)) is not None]
+                for judge in judges}
+    tallies = {judge: [sum(v == want for _, v in found) for want in (1, 0, -1)] for judge, found in verdicts.items()}
+    pooled = [sum(t[i] for t in tallies.values()) for i in range(3)]
+    per_case = grouped(pair for judge in judges for pair in verdicts[judge])
+    if not per_case:
+        return [], None
+    preferred = tuple(sorted(k for k, v in per_case.items() if sum(v) > 0))
+    point, low, high = bootstrap_ci(per_case, f"{run_id}:{harness}:{first}{second}")
+    stats = PairStats(groups=GroupCounts(first=pooled[0], tie=pooled[1], second=pooled[2]),
+                      cases_preferred=preferred, net_by_case={k: sum(v) for k, v in per_case.items()},
+                      mean_case_preference=point, ci95=(low, high))
+    lines = [f"Judge verdicts, {first} vs {second}, one per judged group:", "",
+             f"| Judge | {first} preferred | Tie | {second} preferred |", "|---|---|---|---|",
+             *[f"| {judge} | {t[0]} | {t[1]} | {t[2]} |" for judge, t in tallies.items()],
+             f"| pooled | {pooled[0]} | {pooled[1]} | {pooled[2]} |", "",
+             f"{first} net-preferred on {len(preferred)} of {len(per_case)} cases"
+             + (f" ({', '.join(preferred)})" if preferred else "")
+             + f". Mean per-case preference {point:+.2f} on a −1 to +1 scale, "
+             f"95% bootstrap interval {low:+.2f} to {high:+.2f}.", ""]
+    if (first, second) == ("C", "B"):
+        dims = dimension_counts(judgements, "C", "B")
+        lines += ["C vs B by dimension (descriptive; dimensions from one call are correlated):", "",
+                  "| Dimension | C better | Tie | B better |", "|---|---|---|---|",
+                  *[f"| {d} | {w} | {t} | {l} |" for d, (w, t, l) in dims.items()], ""]
+    return lines, stats
+
+
+def position_audit(judgements: Sequence[Judged], n_conditions: int) -> list[str]:
+    def firsts(judge: str) -> list[float]:
+        return [float(min(r.rank for r in d.ranks) == next(r.rank for r in d.ranks if r.label == "R1"))
+                for j in judgements if j.judgement.judge == judge for d in j.judgement.result.dimensions]
+
+    return [f"Position audit, {judge}: first-shown response ranked best (ties included) in "
+            f"{fmt(mean(firsts(judge)))} of dimension judgements; at least {fmt(1 / n_conditions)} "
+            f"is expected without bias. With few groups this is confounded with which condition "
+            f"happened to be shown first."
+            for judge in sorted({j.judgement.judge for j in judgements})] + [""]
+
+
+def trigger_section(runs: Sequence[TriggerRun]) -> tuple[list[str], TriggerStats]:
+    pos = [float(t.triggered) for t in runs if t.should_trigger]
+    neg = [float(t.triggered) for t in runs if not t.should_trigger]
+    undiscovered = sum(1 for t in runs if t.discovered is False)
+    stats = TriggerStats(recall=mean(pos), false_positive_rate=mean(neg), runs=len(runs),
+                         undiscovered_runs=undiscovered)
+
+    def query_row(index: int) -> str:
+        found = [t for t in runs if t.index == index]
+        rate = statistics.fmean(float(t.triggered) for t in found)
+        flag = "" if (rate >= 0.5) == found[0].should_trigger else " ⚠"
+        query = found[0].query[:90] + ("…" if len(found[0].query) > 90 else "")
+        return f"| {index} | {'yes' if found[0].should_trigger else 'no'} | {fmt(rate)}{flag} | {query} |"
+
+    lines = [f"Triggering: recall {fmt(mean(pos))} on should-trigger queries, false-positive rate "
+             f"{fmt(mean(neg))} on near misses ({len(runs)} runs"
+             + (f"; skill not discovered in {undiscovered} runs" if undiscovered else "") + ").", "",
+             "| # | Expected | Trigger rate | Query |", "|---|---|---|---|",
+             *[query_row(index) for index in sorted({t.index for t in runs})], ""]
+    return lines, stats
+
+
+def harness_section(params: ReportParams, harness: str, cases: Sequence[str], conditions: Sequence[str],
+                    metas: Sequence[GenerationMeta], checks: Sequence[CheckRow], judgements: Sequence[Judged],
+                    triggers: Sequence[TriggerRun]) -> tuple[list[str], HarnessStats]:
+    h_metas = [m for m in metas if m.harness == harness]
+    h_checks = [c for c in checks if c.harness == harness]
+    h_judge = [j for j in judgements if j.harness == harness]
+    h_trig = [t for t in triggers if t.harness == harness]
+    table, stats = condition_table(conditions, h_checks, h_judge, h_metas)
+    overhead = guidance_overhead(stats)
+    pairs = {f"{first}_vs_{second}": pair_section(params.run_id, harness, first, second, h_judge)
+             for first, second in PAIRS}
+    trig_lines, trig_stats = trigger_section(h_trig) if h_trig else ([], None)
+    lines = [f"## {harness}", "", writer_line(h_metas, h_judge), "", *table,
+             *[f"Measured guidance overhead, {cond} vs A: {tokens:,.0f} input tokens per call."
+               for cond, tokens in overhead.items()], "",
+             *(case_check_table(cases, conditions, h_checks) if h_checks else []),
+             *[line for pair_lines, _ in pairs.values() for line in pair_lines],
+             *position_audit(h_judge, len(conditions)),
+             *trig_lines]
+    return lines, HarnessStats(conditions=stats, overhead=overhead, triggers=trig_stats,
+                               pairs={name: s for name, (_, s) in pairs.items() if s is not None})
+
+
+def harness_json(stats: HarnessStats) -> dict[str, object]:
+    """report.json's entry for one writer, in the order earlier reports used."""
+    conditions = {cond: {**row.model_dump(), **({"guidance_overhead_tokens": stats.overhead[cond]}
+                                                if cond in stats.overhead else {})}
+                  for cond, row in stats.conditions.items()}
+    return {"conditions": conditions, **{name: pair.model_dump() for name, pair in stats.pairs.items()},
+            **({"triggers": stats.triggers.model_dump()} if stats.triggers else {})}
+
+
+Gate = tuple[str, Callable[[int, int], str], Callable[[HarnessStats | None, int], bool | None]]
+
+
+def rates_ok(stats: HarnessStats | None, rate: Callable[[ConditionStats], float | None]) -> bool | None:
+    b, c = (stats.conditions.get(k) if stats else None for k in ("B", "C"))
+    rate_b, rate_c = (rate(b) if b else None), (rate(c) if c else None)
+    return None if rate_b is None or rate_c is None else rate_c >= rate_b - FIDELITY_TOLERANCE
+
+
+def pair_ok(stats: HarnessStats | None, test: Callable[[PairStats], bool]) -> bool | None:
+    pair = stats.pairs.get("C_vs_B") if stats else None
+    return None if not pair else test(pair)
+
+
+def triggers_ok(stats: HarnessStats | None, test: Callable[[TriggerStats], bool]) -> bool | None:
+    return None if not (stats and stats.triggers) else test(stats.triggers)
+
+
+# The pre-registered release gates from evals/README.md: (kind, name, test per harness).
+GATES: Sequence[Gate] = (
+    ("safety", lambda needed, n: "no sensitive leaks under C",
+     lambda h, needed: None if not (h and "C" in h.conditions) else h.conditions["C"].sensitive_leaks == 0),
+    ("fidelity", lambda needed, n: f"C checks ≥ B checks − {FIDELITY_TOLERANCE:.0%}",
+     lambda h, needed: rates_ok(h, lambda row: row.check_pass_rate)),
+    ("fidelity", lambda needed, n: f"C judge fidelity ≥ B − {FIDELITY_TOLERANCE:.0%}",
+     lambda h, needed: rates_ok(h, lambda row: row.fidelity_pass_rate)),
+    ("value", lambda needed, n: "judges prefer C over B in more groups than the reverse",
+     lambda h, needed: pair_ok(h, lambda p: p.groups.first > p.groups.second)),
+    ("value", lambda needed, n: f"C net-preferred over B on ≥ {needed}/{n} cases",
+     lambda h, needed: pair_ok(h, lambda p: len(p.cases_preferred) >= needed)),
+    ("trigger", lambda needed, n: f"trigger recall ≥ {MIN_TRIGGER_RECALL:.0%}",
+     lambda h, needed: triggers_ok(h, lambda t: t.recall is not None and t.recall >= MIN_TRIGGER_RECALL)),
+    ("trigger", lambda needed, n: f"trigger false positives ≤ {MAX_TRIGGER_FALSE_POSITIVE:.0%}",
+     lambda h, needed: triggers_ok(h, lambda t: t.false_positive_rate is not None
+                                   and t.false_positive_rate <= MAX_TRIGGER_FALSE_POSITIVE)),
+)
+
+GateResult = tuple[str, str, bool | None]  # kind, name, outcome
+
+
+def failed(*kinds: str) -> Callable[[Sequence[GateResult], Sequence[str]], bool]:
+    return lambda results, missing: not all(ok for kind, _, ok in results if kind in kinds)
+
+
+# The first verdict whose condition holds wins. Fails closed: any missing result, or any gate
+# that could not be evaluated for a harness, makes the run INCOMPLETE.
+VERDICTS: Sequence[tuple[Callable[[Sequence[GateResult], Sequence[str]], bool], str]] = (
+    (lambda results, missing: bool(missing) or not results or any(ok is None for _, _, ok in results),
+     "INCOMPLETE: the run is missing results the gates need; no release decision."),
+    (failed("safety", "fidelity"), "FIX: the skill loses fidelity or safety relative to the short rule."),
+    (failed("value"), "SIMPLIFY: the short rule performs about as well; prefer it over the skill."),
+    (failed("trigger"), "FIX DESCRIPTION: content passes but triggering misses the thresholds."),
+    (lambda results, missing: True, "SHIP: every gate passes for every harness."),
+)
+
+
+def gates(stats: Mapping[str, HarnessStats], n_cases: int, harnesses: Sequence[str],
+          missing: Sequence[str]) -> tuple[list[str], dict[str, bool | None], str]:
+    """Apply the release gates: report lines, each gate's outcome by name, and the verdict."""
+    needed = math.ceil(n_cases / 2)
+    results = [(kind, f"{harness}: {name(needed, n_cases)}", test(stats.get(harness), needed))
+               for harness in harnesses for kind, name, test in GATES]
+    verdict = next(text for applies, text in VERDICTS if applies(results, missing))
+    mark = {True: "PASS", False: "FAIL", None: "NOT EVALUATED"}
+    lines = ["## Release gates", "", *[f"- {mark[ok]}: {name}" for _, name, ok in results]]
+    if missing:
+        lines += ["", f"Missing results ({len(missing)}): " + "; ".join(missing[:10])
+                  + ("; …" if len(missing) > 10 else "")]
+    return lines + ["", f"**Verdict:** {verdict}", ""], {name: ok for _, name, ok in results}, verdict
+
+
+def report(params: ReportParams, cases: Sequence[str], metas: Sequence[GenerationMeta], checks: Sequence[CheckRow],
+           judgements: Sequence[Judged], triggers: Sequence[TriggerRun], n_queries: int) -> tuple[list[str], dict[str, object]]:
+    """report.md's lines and report.json's content."""
+    conditions = [c for c in CONDITIONS if c in params.conditions]
+    manifest = (RUNS_DIR / params.run_id / "manifest.json").relative_to(ROOT)
+    lines = [f"# Eval report: {params.run_id}", "",
+             f"Manifest: `{manifest}`. Expected: {len(cases)} cases × "
+             f"{len(conditions)} conditions × {params.trials} trials per harness ({', '.join(params.harnesses)}), "
+             f"judges: {params.judge_harness}, {params.trigger_runs} trigger runs per query.", ""]
+    stats: dict[str, HarnessStats] = {}
+    for harness in params.harnesses:
+        section, stats[harness] = harness_section(params, harness, cases, conditions, metas, checks, judgements, triggers)
+        lines += section
+    missing = missing_results(
+        params, cases,
+        generated={(m.harness, m.case, m.condition, m.trial) for m in metas if m.ok},
+        checked={(c.harness, c.case, c.condition, c.trial) for c in checks},
+        judged={(j.harness, j.case, j.trial, j.judge): set(j.judgement.mapping.values()) for j in judgements},
+        trigger_runs={(t.harness, t.index, t.attempt) for t in triggers},
+        n_queries=n_queries)
+    gate_lines, results, verdict = gates(stats, len(cases), params.harnesses, missing)
+    summary: dict[str, object] = {"run_id": params.run_id, "harnesses": {h: harness_json(s) for h, s in stats.items()},
+                                  "gates": results, "missing": missing, "verdict": verdict}
+    return lines + gate_lines, summary
+
+
+def report_params(args: argparse.Namespace) -> ReportParams:
+    return ReportParams(run_id=args.run_id, harnesses=tuple(args.harness), conditions=tuple(args.conditions),
+                        trials=args.trials, judge_harness=args.judge_harness, trigger_runs=args.trigger_runs)
+
+
+def load_judgements(run: Path) -> list[Judged]:
+    return [Judged(harness=path.parts[-4], case=path.parts[-3], trial=path.parts[-2], judge=path.stem,
+                   judgement=read_model(StoredJudgement, path))
+            for path in sorted((run / "judge").glob("*/*/t*/*.json"))]
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    run = run_dir(args.run_id, must_exist=True)
+    params = report_params(args)
+    cases = [c.name for c in cases_or_exit(args.cases)]
+    metas = [m for m in (read_model(GenerationMeta, p) for p in sorted((run / "gen").glob("*/*/*/t*/meta.json")))
+             if m.harness in params.harnesses and m.case in cases and m.condition in params.conditions]
+    stored = CHECK_ROWS.validate_json(read_text(run / "checks.json")) if (run / "checks.json").exists() else ()
+    checks = [c for c in stored
+              if c.harness in params.harnesses and c.case in cases and c.condition in params.conditions]
+    judgements = [j for j in load_judgements(run) if j.harness in params.harnesses and j.case in cases]
+    triggers = [t for t in (read_model(TriggerRun, p) for p in sorted((run / "triggers").glob("*/q*.json")))
+                if t.harness in params.harnesses]
+    lines, summary = report(params, cases, metas, checks, judgements, triggers, len(load_triggers()))
     (run / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (run / "report.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print("\n".join(lines))
     return 0
-
-
-def gates(summary: dict, n_cases: int, harnesses: list[str], missing: list[str]) -> list[str]:
-    """Apply the pre-registered release gates from evals/README.md. Fails closed: any missing
-    result, or any gate that could not be evaluated for a harness, makes the run INCOMPLETE."""
-    needed = math.ceil(n_cases / 2)
-    results: dict[str, bool | None] = {}
-    for harness in harnesses:
-        h = summary["harnesses"].get(harness, {})
-        b, c = h.get("conditions", {}).get("B"), h.get("conditions", {}).get("C")
-        cb, t = h.get("C_vs_B"), h.get("triggers")
-
-        def gate(name: str, value):
-            results[f"{harness}: {name}"] = value
-
-        gate("no sensitive leaks under C", None if not c else c["sensitive_leaks"] == 0)
-        gate(f"C checks ≥ B checks − {FIDELITY_TOLERANCE:.0%}",
-             None if not (b and c) or None in (b["check_pass_rate"], c["check_pass_rate"])
-             else c["check_pass_rate"] >= b["check_pass_rate"] - FIDELITY_TOLERANCE)
-        gate(f"C judge fidelity ≥ B − {FIDELITY_TOLERANCE:.0%}",
-             None if not (b and c) or None in (b["fidelity_pass_rate"], c["fidelity_pass_rate"])
-             else c["fidelity_pass_rate"] >= b["fidelity_pass_rate"] - FIDELITY_TOLERANCE)
-        gate("judges prefer C over B in more groups than the reverse",
-             None if not cb else cb["groups"]["first"] > cb["groups"]["second"])
-        gate(f"C net-preferred over B on ≥ {needed}/{n_cases} cases",
-             None if not cb else len(cb["cases_preferred"]) >= needed)
-        gate(f"trigger recall ≥ {MIN_TRIGGER_RECALL:.0%}",
-             None if not t else t["recall"] is not None and t["recall"] >= MIN_TRIGGER_RECALL)
-        gate(f"trigger false positives ≤ {MAX_TRIGGER_FALSE_POSITIVE:.0%}",
-             None if not t else t["false_positive_rate"] is not None
-             and t["false_positive_rate"] <= MAX_TRIGGER_FALSE_POSITIVE)
-    summary["gates"] = results
-    summary["missing"] = missing
-    mark = {True: "PASS", False: "FAIL", None: "NOT EVALUATED"}
-    lines = ["## Release gates", ""] + [f"- {mark[ok]}: {name}" for name, ok in results.items()]
-    if missing:
-        lines += ["", f"Missing results ({len(missing)}): " + "; ".join(missing[:10])
-                  + ("; …" if len(missing) > 10 else "")]
-
-    def all_pass(*keys: str) -> bool:
-        return all(ok for name, ok in results.items() if any(k in name for k in keys))
-
-    if missing or not results or any(ok is None for ok in results.values()):
-        verdict = "INCOMPLETE: the run is missing results the gates need; no release decision."
-    elif not all_pass("leak", "≥ B"):
-        verdict = "FIX: the skill loses fidelity or safety relative to the short rule."
-    elif not all_pass("over B"):
-        verdict = "SIMPLIFY: the short rule performs about as well; prefer it over the skill."
-    elif not all_pass("trigger"):
-        verdict = "FIX DESCRIPTION: content passes but triggering misses the thresholds."
-    else:
-        verdict = "SHIP: every gate passes for every harness."
-    summary["verdict"] = verdict
-    return lines + ["", f"**Verdict:** {verdict}", ""]
 
 
 # ---------------------------------------------------------------------------- lint
@@ -1381,6 +1619,16 @@ def lint_data(cases: Sequence[Case], missing_files: Iterable[str],
     return errors, warnings, summary
 
 
+T = TypeVar("T")
+
+
+def load_or_error(name: str, load: Callable[[], Sequence[T]]) -> tuple[Sequence[T], list[str]]:
+    try:
+        return load(), []
+    except ValidationError as exc:
+        return (), [f"{name}: {first_error(exc)}"]
+
+
 def cmd_lint(_args: argparse.Namespace) -> int:
     errors: list[str] = []
     warnings: list[str] = []
@@ -1393,17 +1641,11 @@ def cmd_lint(_args: argparse.Namespace) -> int:
         print(summary)
     else:
         warnings.append(f"{SKILL_MD.relative_to(ROOT)} does not exist yet; condition C and triggers will not run")
-    loaded = []
-    for name, load in (("cases.json", load_cases), ("triggers.json", load_triggers)):
-        try:
-            loaded.append(load())
-        except ValidationError as exc:
-            errors.append(f"{name}: {first_error(exc)}")
-            loaded.append(())
-    cases, triggers = loaded
+    cases, case_errors = load_or_error("cases.json", load_cases)
+    triggers, trigger_errors = load_or_error("triggers.json", load_triggers)
     missing = {f for case in cases for f in case.files if not (ROOT / f).exists()}
     data_errors, data_warnings, summary = lint_data(cases, missing, triggers)
-    errors, warnings = errors + data_errors, warnings + data_warnings
+    errors, warnings = errors + case_errors + data_errors + trigger_errors, warnings + data_warnings
     print(summary)
     for w in warnings:
         print(f"warning: {w}")
@@ -1411,6 +1653,95 @@ def cmd_lint(_args: argparse.Namespace) -> int:
         print(f"error: {e}")
     print("lint: ok" if not errors else f"lint: {len(errors)} error(s)")
     return 1 if errors else 0
+
+
+# ------------------------------------------------------------------------- calibrate
+
+CONDITION_NAMES = {"B": "short rule (B)", "C": "skill (C)"}
+Pick = tuple[Case, int, str, str]  # case, trial, condition shown as X, condition shown as Y
+
+
+def fenced(text: str, info: str = "") -> str:
+    """Fence text with more backticks than it contains, so nested fences survive."""
+    longest = max((len(m) for m in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}{info}\n{text.rstrip()}\n{fence}"
+
+
+def calibration_picks(run_id: str, harness: str, cases: Sequence[Case], trials: int, groups: int,
+                      complete: set[tuple[str, int]]) -> list[Pick]:
+    """One random complete group per case, up to `groups`, with B and C as X and Y in random order."""
+    rng = random.Random(f"{run_id}:{harness}:calibrate")
+    order = list(cases)
+    rng.shuffle(order)
+    picks: list[Pick] = []
+    for case in order:
+        trial_order = list(range(1, trials + 1))
+        rng.shuffle(trial_order)
+        trial = next((t for t in trial_order if (case.name, t) in complete), None)
+        if trial is None:
+            continue
+        x, y = rng.sample(["B", "C"], 2)
+        picks.append((case, trial, x, y))
+        if len(picks) == groups:
+            break
+    return picks
+
+
+def packet_header(run_id: str, harness: str) -> list[str]:
+    return [f"# Calibration packet: {run_id}, {harness} writer", "",
+            "For each group, read the task and the source, then decide which response serves the "
+            "intended reader better, or call it a tie, and note why. Open `key.md` only when you "
+            "have decided every group.", ""]
+
+
+def key_header(run_id: str, harness: str) -> list[str]:
+    return [f"# Calibration key: {run_id}, {harness} writer", "",
+            "Judge columns give each judge's group verdict: the response that ranked better on more "
+            "of the four dimensions. Fill in your call, then count agreements per judge.", "",
+            "| Group | Case | Trial | X | Y | Claude judge | Codex judge | Your call |",
+            "|---|---|---|---|---|---|---|---|"]
+
+
+def calibration_group(number: int, pick: Pick, files: Sequence[tuple[str, str]], outputs: Mapping[str, str],
+                      judgements: Sequence[StoredJudgement]) -> tuple[list[str], str]:
+    """A group's packet section and its row in the key."""
+    case, trial, x, y = pick
+    verdicts = [VERDICT_MARKS[group_verdict(j, x, y)] for j in judgements]
+    row = (f"| {number} | {case.name} | t{trial} | {CONDITION_NAMES[x]} | {CONDITION_NAMES[y]} | "
+           f"{verdicts[0]} | {verdicts[1]} | |")
+    section = [f"## Group {number}", "", "### Task", "", case.prompt.strip(), "",
+               *[line for name, text in files for line in (f"### Source: `{name}`", "", fenced(text, "markdown"), "")],
+               *[line for label, cond in (("X", x), ("Y", y))
+                 for line in (f"### Response {label}", "", fenced(outputs[cond], "markdown"), "")],
+               "**Your call** (X, Y, or tie) and why:", "", "---", ""]
+    return section, row
+
+
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    """Write a blind packet for the human judge check: one random group per case, the skill
+    (C) and the short rule (B) shown as X and Y in random order, and a separate answer key."""
+    run = run_dir(args.run_id, must_exist=True)
+    cases = load_cases()
+    complete = {(case.name, trial) for case in cases for trial in range(1, args.trials + 1)
+                if all((gen_dir(run, args.harness, case.name, c, trial) / "output.md").exists() for c in ("B", "C"))
+                and all(judge_path(run, args.harness, case.name, f"t{trial}", j).exists() for j in HARNESSES)}
+    picks = calibration_picks(args.run_id, args.harness, cases, args.trials, args.groups, complete)
+    packet, key = packet_header(args.run_id, args.harness), key_header(args.run_id, args.harness)
+    for number, pick in enumerate(picks, 1):
+        case, trial = pick[0], pick[1]
+        outputs = {c: read_text(gen_dir(run, args.harness, case.name, c, trial) / "output.md") for c in ("B", "C")}
+        judgements = [read_model(StoredJudgement, judge_path(run, args.harness, case.name, f"t{trial}", j))
+                      for j in HARNESSES]
+        section, row = calibration_group(number, pick, case_files(case), outputs, judgements)
+        packet, key = packet + section, key + [row]
+    out = run / "calibration"
+    out.mkdir(exist_ok=True)
+    (out / "packet.md").write_text("\n".join(packet), encoding="utf-8")
+    (out / "key.md").write_text("\n".join(key) + "\n", encoding="utf-8")
+    print(f"calibrate: {len(picks)} group(s) -> {(out / 'packet.md').relative_to(ROOT)}, "
+          f"key in {(out / 'key.md').relative_to(ROOT)}")
+    return 0 if len(picks) == args.groups else 1
 
 
 # ----------------------------------------------------------------------------- cli
@@ -1431,83 +1762,24 @@ def tool_version(cmd: list[str]) -> str | None:
         return None
 
 
-def write_manifest(run: Path, args, opts: HarnessOptions) -> None:
+def write_manifest(run: Path, args: argparse.Namespace, opts: HarnessOptions) -> None:
     path = run / "manifest.json"
-    manifest = load_json(path) if path.exists() else {"created": dt.datetime.now(dt.timezone.utc).isoformat()}
-    manifest.setdefault("invocations", []).append({
-        "at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "argv": sys.argv[1:],
-        "git_commit": tool_version(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"]),
-        "git_dirty": bool(tool_version(["git", "-C", str(ROOT), "status", "--porcelain"])),
-        "skill_sha": sha256(SKILL_MD.read_text(encoding="utf-8")) if SKILL_MD.exists() else None,
-        "short_rule_sha": sha256(SHORT_RULE_FILE.read_text(encoding="utf-8")),
-        "cases_sha": sha256(CASES_FILE.read_text(encoding="utf-8")),
-        "claude_version": tool_version(["claude", "--version"]) if shutil.which("claude") else None,
-        "codex_version": tool_version(["codex", "--version"]) if shutil.which("codex") else None,
-        "options": opts.model_dump(),
-    })
-    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-
-
-def fenced(text: str, info: str = "") -> str:
-    """Fence text with more backticks than it contains, so nested fences survive."""
-    longest = max((len(m) for m in re.findall(r"`+", text)), default=0)
-    fence = "`" * max(3, longest + 1)
-    return f"{fence}{info}\n{text.rstrip()}\n{fence}"
-
-
-def cmd_calibrate(args) -> int:
-    """Write a blind packet for the human judge check: one random group per case, the skill
-    (C) and the short rule (B) shown as X and Y in random order, and a separate answer key."""
-    run = run_dir(args.run_id, must_exist=True)
-    rng = random.Random(f"{args.run_id}:{args.harness}:calibrate")
-    cases = list(load_cases())
-    rng.shuffle(cases)
-    packet = [f"# Calibration packet: {args.run_id}, {args.harness} writer", "",
-              "For each group, read the task and the source, then decide which response serves the "
-              "intended reader better, or call it a tie, and note why. Open `key.md` only when you "
-              "have decided every group.", ""]
-    key = [f"# Calibration key: {args.run_id}, {args.harness} writer", "",
-           "Judge columns give each judge's group verdict: the response that ranked better on more "
-           "of the four dimensions. Fill in your call, then count agreements per judge.", "",
-           "| Group | Case | Trial | X | Y | Claude judge | Codex judge | Your call |",
-           "|---|---|---|---|---|---|---|---|"]
-    picked = 0
-    for case in cases:
-        trials = list(range(1, args.trials + 1))
-        rng.shuffle(trials)
-        for trial in trials:
-            outputs = {c: gen_dir(run, args.harness, case.name, c, trial) / "output.md" for c in ("B", "C")}
-            paths = {j: judge_path(run, args.harness, case.name, f"t{trial}", j) for j in HARNESSES}
-            if all(p.exists() for p in outputs.values()) and all(p.exists() for p in paths.values()):
-                break
-        else:
-            continue
-        picked += 1
-        x, y = rng.sample(["B", "C"], 2)
-        verdicts = []
-        for judge in HARNESSES:
-            v = group_verdict(load_json(paths[judge]), x, y)
-            verdicts.append({1: "X", -1: "Y", 0: "tie"}.get(v, "–"))
-        names = {"B": "short rule (B)", "C": "skill (C)"}
-        key.append(f"| {picked} | {case.name} | t{trial} | {names[x]} | {names[y]} | "
-                   f"{verdicts[0]} | {verdicts[1]} | |")
-        packet += [f"## Group {picked}", "", "### Task", "", case.prompt.strip(), ""]
-        for name, text in case_files(case):
-            packet += [f"### Source: `{name}`", "", fenced(text, "markdown"), ""]
-        for label, cond in (("X", x), ("Y", y)):
-            packet += [f"### Response {label}", "",
-                       fenced(outputs[cond].read_text(encoding="utf-8"), "markdown"), ""]
-        packet += ["**Your call** (X, Y, or tie) and why:", "", "---", ""]
-        if picked == args.groups:
-            break
-    out = run / "calibration"
-    out.mkdir(exist_ok=True)
-    (out / "packet.md").write_text("\n".join(packet), encoding="utf-8")
-    (out / "key.md").write_text("\n".join(key) + "\n", encoding="utf-8")
-    print(f"calibrate: {picked} group(s) -> {(out / 'packet.md').relative_to(ROOT)}, "
-          f"key in {(out / 'key.md').relative_to(ROOT)}")
-    return 0 if picked == args.groups else 1
+    raw = json.loads(read_text(path)) if path.exists() else {"created": dt.datetime.now(dt.timezone.utc).isoformat()}
+    manifest = Manifest.model_validate(raw)
+    invocation = Invocation(
+        at=dt.datetime.now(dt.timezone.utc).isoformat(),
+        argv=sys.argv[1:],
+        git_commit=tool_version(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"]),
+        git_dirty=bool(tool_version(["git", "-C", str(ROOT), "status", "--porcelain"])),
+        skill_sha=sha256(read_text(SKILL_MD)) if SKILL_MD.exists() else None,
+        short_rule_sha=sha256(read_text(SHORT_RULE_FILE)),
+        cases_sha=sha256(read_text(CASES_FILE)),
+        claude_version=tool_version(["claude", "--version"]) if shutil.which("claude") else None,
+        codex_version=tool_version(["codex", "--version"]) if shutil.which("codex") else None,
+        options=opts.model_dump(),
+    )
+    updated = {**raw, "invocations": [*manifest.invocations, invocation.model_dump()]}
+    path.write_text(json.dumps(updated, indent=2), encoding="utf-8")
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -1549,25 +1821,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
+# Commands that need no harness options, and the steps of a run, in the order `all` runs them.
+COMMANDS: Mapping[str, Callable[[argparse.Namespace], int]] = {
+    "lint": cmd_lint, "selftest": cmd_selftest, "calibrate": cmd_calibrate,
+}
+STEPS: Mapping[str, Callable[[argparse.Namespace, HarnessOptions], object]] = {
+    "generate": cmd_generate,
+    "check": lambda args, _: cmd_check(args),
+    "judge": cmd_judge,
+    "triggers": cmd_triggers,
+    "report": lambda args, _: cmd_report(args),
+}
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
-    if args.command == "lint":
-        return cmd_lint(args)
-    if args.command == "selftest":
-        return cmd_selftest(args)
-    if args.command == "calibrate":
-        return cmd_calibrate(args)
+    if args.command in COMMANDS:
+        return COMMANDS[args.command](args)
     opts = HarnessOptions(claude_model=args.claude_model, claude_effort=args.claude_effort,
                           codex_model=args.codex_model, codex_effort=args.codex_effort, timeout=args.timeout)
-    steps = {
-        "generate": lambda: cmd_generate(args, opts),
-        "check": lambda: cmd_check(args),
-        "judge": lambda: cmd_judge(args, opts),
-        "triggers": lambda: cmd_triggers(args, opts),
-        "report": lambda: cmd_report(args),
-    }
-    for step in (steps if args.command == "all" else [args.command]):
-        steps[step]()
+    for step in (STEPS if args.command == "all" else [args.command]):
+        STEPS[step](args, opts)
     return 0
 
 
