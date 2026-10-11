@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import hashlib
 import json
 import math
 import random
@@ -50,12 +49,20 @@ from typing import TypeVar
 
 from pydantic import ValidationError
 
+from runner.harness import (
+    claude_command, claude_discovered, claude_loaded_skill, claude_trigger_command, codex_base_command,
+    codex_exec_command, codex_read_skill, json_values, judges_for, parse_claude_reply, parse_codex_output,
+)
 from runner.models import (
     CHECK_ROWS, CONDITIONS, DIMENSIONS, HARNESSES, SKILL_NAME, TRIGGER_QUERIES, M, CallResult, Case, CaseFile,
-    Check, CheckRow, ClaudeEvent, ClaudeReply, ClaudeUsage, CodexEvent, ConditionStats, GenerationMeta,
-    GroupCounts, Guidance, HarnessOptions, HarnessStats, Invocation, JudgedConditions, Judged, JudgeResult,
-    Manifest, Model, PairStats, PatternCheck, PhraseCheck, RatioCheck, ReportParams, ResponseGrade,
-    StoredJudgement, TriggerOutcome, TriggerQuery, TriggerRun, TriggerStats, first_error, parsed,
+    Check, CheckRow, ConditionStats, GenerationMeta, GroupCounts, Guidance, HarnessOptions, HarnessStats,
+    Invocation, JudgedConditions, Judged, JudgeResult, Manifest, Model, PairStats, PatternCheck, PhraseCheck,
+    RatioCheck, ReportParams, ResponseGrade, StoredJudgement, TriggerOutcome, TriggerQuery, TriggerRun,
+    TriggerStats, first_error,
+)
+from runner.prompts import (
+    GUIDANCE, blind_mapping, build_judge_prompt, build_prompt, judge_schema, judgement_error, sha256,
+    split_frontmatter,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -77,8 +84,6 @@ FIDELITY_TOLERANCE = 0.02  # C may trail B by at most this on pass rates
 MIN_TRIGGER_RECALL = 0.8
 MAX_TRIGGER_FALSE_POSITIVE = 0.2
 
-NO_REPO_NOTE = "Everything you need is included below; there is no repository checkout to inspect."
-
 
 # --------------------------------------------------------------------------- data
 
@@ -89,15 +94,6 @@ def read_text(path: Path) -> str:
 
 def read_model(model: type[M], path: Path) -> M:
     return model.model_validate_json(read_text(path))
-
-
-def json_values(lines: Iterable[str]) -> Iterator[object]:
-    """The lines of a JSONL stream that parse as JSON; other lines are skipped."""
-    for line in lines:
-        try:
-            yield json.loads(line)
-        except json.JSONDecodeError:
-            continue
 
 
 def load_cases() -> Sequence[Case]:
@@ -132,128 +128,12 @@ def word_count(text: str) -> int:
     return len(re.findall(r"\S+", text))
 
 
-def sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
-
-
-def split_frontmatter(text: str) -> tuple[dict[str, str | dict[str, str]], str]:
-    """Parse the simple YAML frontmatter used by SKILL.md (scalars and one-level maps)."""
-    match = re.match(r"\A---\n(.*?)\n---\n?(.*)\Z", text, re.S)
-    if not match:
-        return {}, text
-    meta: dict[str, str | dict[str, str]] = {}
-    parent: str | None = None
-    for line in match.group(1).splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        key, _, value = line.strip().partition(":")
-        value = value.strip().strip('"').strip("'")
-        nested = meta.get(parent) if parent else None
-        if line.startswith((" ", "\t")) and isinstance(nested, dict):
-            nested[key] = value
-        elif value:
-            meta[key], parent = value, None
-        else:
-            meta[key], parent = {}, key
-    return meta, match.group(2)
-
-
 def load_guidance() -> Guidance:
     body = split_frontmatter(read_text(SKILL_MD))[1].strip() if SKILL_MD.exists() else None
     return Guidance(short_rule=read_text(SHORT_RULE_FILE).strip(), skill_body=body)
 
 
-GUIDANCE: Mapping[str, Callable[[Guidance], str | None]] = {
-    "A": lambda g: None,
-    "B": lambda g: g.short_rule,
-    "C": lambda g: g.skill_body,
-}
-
-
-def file_blocks(files: Sequence[tuple[str, str]]) -> list[str]:
-    return [f'<file name="{name}">\n{text.rstrip()}\n</file>' for name, text in files]
-
-
-def build_prompt(case: Case, guidance: str | None, files: Sequence[tuple[str, str]]) -> str:
-    preamble = [
-        "Apply the following writing guidance to this task.\n\n"
-        f"<writing-guidance>\n{guidance}\n</writing-guidance>"
-    ] if guidance else []
-    return "\n\n".join([*preamble, f"{case.prompt}\n\n{NO_REPO_NOTE}", *file_blocks(files)]) + "\n"
-
-
 # ------------------------------------------------------------------------ harnesses
-
-
-def flag(name: str, value: str | None) -> list[str]:
-    return [name, value] if value else []
-
-
-def claude_command(opts: HarnessOptions, schema: Mapping[str, object] | None) -> list[str]:
-    return ["claude", "-p", "--output-format", "json", "--tools", "",
-            "--disable-slash-commands", "--no-session-persistence",
-            *flag("--model", opts.claude_model), *flag("--effort", opts.claude_effort),
-            *flag("--json-schema", json.dumps(schema) if schema else None)]
-
-
-def parse_claude_reply(stdout: str, stderr: str, returncode: int, duration: float,
-                       opts: HarnessOptions) -> CallResult:
-    try:
-        reply = ClaudeReply.model_validate_json(stdout)
-    except ValidationError:
-        return CallResult(ok=False, error=f"exit {returncode}: {(stderr or stdout)[-500:]}", duration_s=duration)
-    usage = reply.usage or ClaudeUsage()
-    return CallResult(
-        ok=not reply.is_error and returncode == 0,
-        text=reply.result or "",
-        structured=reply.structured_output,
-        usage={
-            "input_tokens": sum(n or 0 for n in (usage.input_tokens, usage.cache_read_input_tokens,
-                                                 usage.cache_creation_input_tokens)),
-            "output_tokens": usage.output_tokens or 0,
-            "cost_usd": reply.total_cost_usd,
-        },
-        model=",".join(sorted(reply.model_usage or {})) or opts.claude_model,
-        duration_s=duration,
-        error=None if not reply.is_error else str(reply.result)[:500],
-    )
-
-
-def codex_base_command(opts: HarnessOptions, cwd: str) -> list[str]:
-    effort = f'model_reasoning_effort="{opts.codex_effort}"' if opts.codex_effort else None
-    return ["codex", "exec", "--ignore-user-config", "--ephemeral", "-s", "read-only",
-            "-C", cwd, "--json", *flag("-m", opts.codex_model), *flag("-c", effort)]
-
-
-def codex_exec_command(opts: HarnessOptions, cwd: str, out_file: Path, schema_file: Path | None) -> list[str]:
-    return [*codex_base_command(opts, cwd), "--skip-git-repo-check", "-o", str(out_file),
-            *flag("--output-schema", str(schema_file) if schema_file else None), "-"]
-
-
-def codex_usage(events: Sequence[CodexEvent]) -> dict[str, int]:
-    completed = [e.usage for e in events if e.type == "turn.completed" and e.usage]
-    return {"input_tokens": sum(u.input_tokens or 0 for u in completed),
-            "output_tokens": sum(u.output_tokens or 0 for u in completed)}
-
-
-def decode_json(text: str) -> tuple[object, str | None]:
-    try:
-        return json.loads(text), None
-    except json.JSONDecodeError:
-        return None, "final message is not valid JSON"
-
-
-def parse_codex_output(stdout: str, stderr: str, returncode: int, text: str, want_json: bool,
-                       duration: float, opts: HarnessOptions) -> CallResult:
-    events = [(raw, event) for raw in json_values(stdout.splitlines())
-              if (event := parsed(CodexEvent, raw)) is not None]
-    failures = [json.dumps(raw)[:500] for raw, event in events if event.type in ("turn.failed", "error")]
-    structured, invalid = decode_json(text) if want_json and text else (None, None)
-    errors = failures + ([invalid] if invalid else [])
-    ok = returncode == 0 and bool(text) and not errors
-    return CallResult(ok=ok, text=text, structured=structured, usage=codex_usage([e for _, e in events]),
-                      model=opts.codex_model, duration_s=duration,
-                      error="; ".join(errors) or (None if ok else f"exit {returncode}: {stderr[-500:]}"))
 
 
 def run_cli(cmd: list[str], prompt: str, cwd: str, timeout: int) -> subprocess.CompletedProcess[str] | None:
@@ -531,80 +411,6 @@ def selftest_judge_schema() -> int:
 # --------------------------------------------------------------------------- judge
 
 
-def judge_schema() -> dict[str, object]:
-    def obj(props: dict[str, object]) -> dict[str, object]:
-        return {"type": "object", "additionalProperties": False,
-                "required": list(props), "properties": props}
-
-    string, verdict = {"type": "string"}, {"type": "string", "enum": ["pass", "fail", "unknown"]}
-    response = obj({
-        "label": string,
-        "analysis": string,
-        "expectations": {"type": "array", "items": obj(
-            {"index": {"type": "integer"}, "verdict": verdict, "evidence": string})},
-        "invented_facts": {"type": "array", "items": string},
-        "omitted_facts": {"type": "array", "items": string},
-        "fidelity": {"type": "string", "enum": ["pass", "fail"]},
-    })
-    dimension = obj({
-        "dimension": {"type": "string", "enum": list(DIMENSIONS)},
-        "analysis": string,
-        "ranks": {"type": "array", "items": obj({"label": string, "rank": {"type": "integer"}})},
-    })
-    return obj({"responses": {"type": "array", "items": response},
-                "dimensions": {"type": "array", "items": dimension}})
-
-
-def build_judge_prompt(template: str, case: Case, files: Sequence[tuple[str, str]],
-                       responses: Mapping[str, str]) -> str:
-    expectations = "\n".join(f"{i}. {e}" for i, e in enumerate(case.expectations, 1))
-    blocks = "\n\n".join(f'<response label="{label}">\n{text.rstrip()}\n</response>'
-                         for label, text in responses.items())
-    return (template
-            .replace("{{TASK}}", case.prompt)
-            .replace("{{FILES}}", "\n\n".join(file_blocks(files)))
-            .replace("{{EXPECTATIONS}}", expectations)
-            .replace("{{RESPONSES}}", blocks))
-
-
-def judgement_problems(result: JudgeResult, labels: Sequence[str], n_expectations: int) -> Iterator[str]:
-    if sorted(r.label for r in result.responses) != sorted(labels):
-        yield "response labels do not match"
-    for response in result.responses:
-        if sorted(e.index for e in response.expectations) != list(range(1, n_expectations + 1)):
-            yield f"expectation indexes incomplete for {response.label}"
-    if sorted(d.dimension for d in result.dimensions) != sorted(DIMENSIONS):
-        yield "dimensions incomplete"
-    for dim in result.dimensions:
-        if sorted(r.label for r in dim.ranks) != sorted(labels):
-            yield f"ranks incomplete for {dim.dimension}"
-
-
-def judgement_error(structured: object, labels: Sequence[str], n_expectations: int) -> str | None:
-    """Why a judge's structured output is unusable, or None if it is complete."""
-    if not isinstance(structured, dict):
-        return "no structured output"
-    try:
-        result = JudgeResult.model_validate(structured)
-    except ValidationError as exc:
-        return f"output does not match the schema: {first_error(exc)}"
-    return next(judgement_problems(result, labels, n_expectations), None)
-
-
-JUDGE_MODES: Mapping[str, Callable[[str], list[str]]] = {
-    # Both families judge every group, which separates writer effects from judge taste.
-    "panel": lambda harness: list(HARNESSES),
-    # Only the other family.
-    "cross": lambda harness: [HARNESS[harness].other],
-}
-
-
-def judges_for(harness: str, mode: str) -> list[str]:
-    """The judges for one writer's groups: a mode from JUDGE_MODES, or one named harness."""
-    judges = JUDGE_MODES.get(mode)
-    return judges(harness) if judges else [mode]
-
-
 def judge_path(run: Path, harness: str, case: str, trial_name: str, judge: str) -> Path:
     return run / "judge" / harness / case / trial_name / f"{judge}.json"
 
@@ -613,13 +419,6 @@ def judged_conditions(path: Path) -> set[str]:
     """Conditions a stored judgement compared. A group judged while an output was missing
     covers fewer than the run expects, and must be redone once the output exists."""
     return set(read_model(JudgedConditions, path).mapping.values()) if path.exists() else set()
-
-
-def blind_mapping(seed: str, conditions: Iterable[str]) -> dict[str, str]:
-    """Anonymous labels R1, R2, ... for the conditions, in an order seeded per judge."""
-    order = sorted(conditions)
-    random.Random(seed).shuffle(order)
-    return {f"R{i}": cond for i, cond in enumerate(order, 1)}
 
 
 def judge_one(group: str, judge: str, prompt: str, mapping: Mapping[str, str], n_expectations: int,
@@ -696,37 +495,9 @@ def stream_until(cmd: list[str], cwd: str, timeout: int,
         proc.wait()
 
 
-# A tool call that loads the skill, by tool name: the text its input must contain.
-SKILL_LOADS = {"Skill": SKILL_NAME, "Read": f"{SKILL_NAME}/SKILL.md"}
-
-
-def claude_loaded_skill(raw: object) -> bool:
-    event = parsed(ClaudeEvent, raw)
-    if event is None or event.type != "assistant" or event.message is None:
-        return False
-    return any(block.type == "tool_use" and block.name in SKILL_LOADS
-               and SKILL_LOADS[block.name] in json.dumps(block.input)
-               for block in event.message.content)
-
-
-def claude_discovered(events: Sequence[object]) -> bool | None:
-    """Whether the last init event listed the skill; None if there was none."""
-    inits = [e for e in (parsed(ClaudeEvent, raw) for raw in events)
-             if e is not None and e.type == "system" and e.subtype == "init"]
-    return SKILL_NAME in (inits[-1].skills or []) if inits else None
-
-
-def codex_read_skill(raw: object) -> bool:
-    event = parsed(CodexEvent, raw)
-    item = (event.item if event else None) or {}
-    return item.get("type") not in (None, "agent_message", "reasoning") and \
-        f"{SKILL_NAME}/SKILL.md" in json.dumps(item)
-
-
 def claude_trigger(query: str, project: str, opts: HarnessOptions) -> TriggerOutcome:
-    cmd = ["claude", "-p", query, "--output-format", "stream-json", "--verbose", "--max-turns", "3",
-           "--no-session-persistence", "--tools", "Skill,Read,Glob,Grep", *flag("--model", opts.claude_model)]
-    triggered, ended, events = stream_until(cmd, project, opts.timeout, claude_loaded_skill)
+    triggered, ended, events = stream_until(claude_trigger_command(query, opts), project, opts.timeout,
+                                            claude_loaded_skill)
     return TriggerOutcome(triggered=triggered, ended=ended, discovered=claude_discovered(events))
 
 
@@ -742,12 +513,11 @@ class Harness(Model):
     call: Callable[[str, HarnessOptions, Mapping[str, object] | None], CallResult]
     trigger: Callable[[str, str, HarnessOptions], TriggerOutcome]
     skills_dir: str  # project-level skills directory
-    other: str  # the other model family
 
 
 HARNESS: Mapping[str, Harness] = {
-    "claude": Harness(call=call_claude, trigger=claude_trigger, skills_dir=".claude/skills", other="codex"),
-    "codex": Harness(call=call_codex, trigger=codex_trigger, skills_dir=".agents/skills", other="claude"),
+    "claude": Harness(call=call_claude, trigger=claude_trigger, skills_dir=".claude/skills"),
+    "codex": Harness(call=call_codex, trigger=codex_trigger, skills_dir=".agents/skills"),
 }
 
 
