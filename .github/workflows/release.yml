@@ -1,0 +1,38 @@
+name: release
+
+# release-please keeps a release pull request open with the next version and its changelog
+# entry, and tags the release when that pull request is merged. The evidence job runs first
+# and stops a minor or major release that has no committed eval results.
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require eval evidence for a minor or major release
+        run: .github/scripts/check-release-evidence.sh
+
+  release-please:
+    needs: evidence
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # tags and GitHub releases
+      issues: write # labels on the release pull request, which release-please uses to track it
+      pull-requests: write # the release pull request
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
