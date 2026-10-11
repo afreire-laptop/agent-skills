@@ -16,6 +16,7 @@ They follow the practices in Anthropic's [skill authoring guide](https://platfor
 | `judge.md` | The judge prompt. |
 | `run.py` | The runner's command line. Python 3.10+, run with uv; Pydantic is its one dependency. |
 | `runner/` | The runner's modules. `commands.py` has one handler per subcommand and `io.py` the file and process access; the other modules (`models`, `prompts`, `harness`, `checks`, `report`, `gates`, `lint`, `calibrate`, `selftest`) touch no files or processes and import neither. |
+| `capture/` | Fake `claude` and `codex` CLIs and a capture script that check, without model calls, that a runner change keeps its behaviour byte-identical. See [`capture/README.md`](capture/README.md). |
 | `run.py.lock` | The runner's pinned dependencies, with hashes. Regenerate with `uv lock --script evals/run.py`. |
 | `results/` | Committed summaries of release runs. Raw runs go to `runs/`, which is git-ignored. |
 
