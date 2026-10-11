@@ -14,24 +14,25 @@ They follow the practices in Anthropic's [skill authoring guide](https://platfor
 | `triggers.json` | 10 should-trigger queries and 10 near misses, in skill-creator's trigger eval-set format. |
 | `conditions/short-rule.md` | Condition B: the strongest short writing rule we could write, the skill's real competitor. |
 | `judge.md` | The judge prompt. |
-| `run.py` | The runner. Python 3.10+, standard library only. |
+| `run.py` | The runner. Python 3.10+, run with uv; Pydantic is its one dependency. |
+| `run.py.lock` | The runner's pinned dependencies, with hashes. Regenerate with `uv lock --script evals/run.py`. |
 | `results/` | Committed summaries of release runs. Raw runs go to `runs/`, which is git-ignored. |
 
 ## Requirements
 
-Python 3.10 or later, and at least one of the [Claude Code](https://code.claude.com/docs) (`claude`) or [Codex](https://developers.openai.com/codex) (`codex`) CLIs, logged in. The runner calls the CLIs directly, so subscriptions work and no API keys are needed. Cross-family judging needs both.
+[uv](https://docs.astral.sh/uv/), which installs Python 3.10 or later and the locked dependencies on first run, and at least one of the [Claude Code](https://code.claude.com/docs) (`claude`) or [Codex](https://developers.openai.com/codex) (`codex`) CLIs, logged in. The runner calls the CLIs directly, so subscriptions work and no API keys are needed. Cross-family judging needs both.
 
 ## Running
 
 ```sh
-python3 evals/run.py lint        # skill frontmatter, budgets, eval data
-python3 evals/run.py selftest    # graders: references pass, raw inputs fail
+uv run evals/run.py lint        # skill frontmatter, budgets, eval data
+uv run evals/run.py selftest    # graders: references pass, raw inputs fail
 
 # Smoke run: one trial, 42 generations, 28 judgements, 40 trigger runs.
-python3 evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
+uv run evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
 
 # Release run: three trials, 126 generations, 84 judgements, 120 trigger runs.
-python3 evals/run.py all --run-id v0.1.0 --judge-effort high
+uv run evals/run.py all --run-id v0.1.0 --judge-effort high
 ```
 
 Every subcommand takes `--run-id`, and `generate`, `judge`, and `triggers` skip work that already succeeded, so an interrupted run resumes where it stopped. Use `--harness claude` or `--harness codex` to run one CLI, `--cases` to select cases, and `--claude-model`, `--codex-model`, `--claude-effort`, `--codex-effort` to pin the writer. Each run records CLI versions, models, the git commit, and hashes of the skill, the short rule, and `cases.json` in `runs/<run-id>/manifest.json`.
@@ -62,7 +63,7 @@ The report reduces each judgement to one verdict per pair of conditions (C vs B,
 
 Deviation from the cited practice: one judge call grades all dimensions for a group, rather than one isolated call per dimension. This keeps a release run at 84 judgements instead of 336. The mitigations are structured output, reasoning before verdicts, randomized order, a two-family panel, group-level aggregation, and human calibration.
 
-**Calibrate the judge before trusting it.** For a release, `python3 evals/run.py calibrate --run-id <run-id>` writes `runs/<run-id>/calibration/packet.md`: one randomly chosen group per case, up to five, showing the task, the source, and the skill's and the short rule's outputs as X and Y in random order. A person decides each group, then fills in `key.md`, which holds both judges' verdicts, and puts the agreement rate in the results file. If agreement is poor, fix `judge.md` before drawing conclusions.
+**Calibrate the judge before trusting it.** For a release, `uv run evals/run.py calibrate --run-id <run-id>` writes `runs/<run-id>/calibration/packet.md`: one randomly chosen group per case, up to five, showing the task, the source, and the skill's and the short rule's outputs as X and Y in random order. A person decides each group, then fills in `key.md`, which holds both judges' verdicts, and puts the agreement rate in the results file. If agreement is poor, fix `judge.md` before drawing conclusions.
 
 ## Triggers
 

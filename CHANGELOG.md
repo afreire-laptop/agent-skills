@@ -11,6 +11,7 @@ All notable changes to this skill are recorded here. The format follows [Keep a 
 ### Changed
 
 - Shorter, plainer README, revised with the skill itself.
+- The eval runner runs with uv (`uv run evals/run.py`) and depends on Pydantic, pinned with hashes in `evals/run.py.lock`.
 
 ## [0.1.0] - 2026-10-10
 

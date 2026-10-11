@@ -1,8 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["pydantic==2.13.5"]
+# ///
 """Evaluation runner for the technical-writing skill.
 
-Standard library only (Python 3.10+). Drives the `claude` and `codex` CLIs with
-whatever login they already have, so no API keys are needed.
+Run with `uv run evals/run.py` (Python 3.10+); Pydantic is the one dependency.
+Drives the `claude` and `codex` CLIs with whatever login they already have, so
+no API keys are needed.
 
 Subcommands:
   lint      validate the skill's frontmatter and the eval data files

@@ -50,8 +50,8 @@ The eval suite compares the skill with no guidance and with a one-paragraph writ
 Result for v0.1.0 ([details](evals/results/v0.1.0.md)): with Claude Code, judges preferred the skill over the short rule in 30 of 42 groups, and the rule in 9. With Codex, they preferred the rule, 21 groups to 15, although the skill kept more facts. A person's blind check of five groups agreed with 9 of 10 judge verdicts. For Codex and Pi, put the short rule in the global instructions instead of installing the skill.
 
 ```sh
-python3 evals/run.py lint && python3 evals/run.py selftest
-python3 evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
+uv run evals/run.py lint && uv run evals/run.py selftest
+uv run evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
 ```
 
 ## Repository layout
@@ -79,8 +79,8 @@ Git tags and [`CHANGELOG.md`](CHANGELOG.md) record versions. The frontmatter has
 To release:
 
 1. Move the `Unreleased` entries in `CHANGELOG.md` under the new version.
-2. Run `python3 evals/run.py lint` and `python3 evals/run.py selftest`.
-3. For a minor or major release, run `python3 evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `python3 evals/run.py calibrate --run-id vX.Y.Z`, then copy the report and the calibration result into `evals/results/vX.Y.Z.md`. A patch release runs only the cases its change affects.
+2. Run `uv run evals/run.py lint` and `uv run evals/run.py selftest`.
+3. For a minor or major release, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`, then copy the report and the calibration result into `evals/results/vX.Y.Z.md`. A patch release runs only the cases its change affects.
 4. Commit, then tag: `git tag -a vX.Y.Z -m "technical-writing vX.Y.Z"`.
 
 ## Design decisions
