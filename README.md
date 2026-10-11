@@ -1,5 +1,7 @@
 # technical-writing
 
+[![skills.sh](https://skills.sh/b/afreire-laptop/technical-writing)](https://skills.sh/afreire-laptop/technical-writing)
+
 An [Agent Skill](https://agentskills.io/specification) for writing and revising engineering documents that people read: READMEs, guides, API docs, runbooks, RFCs, specs, ADRs, PR descriptions, commit messages, release notes, technical explanations, and handoffs. It loads in Claude Code, OpenAI Codex, and Pi. v0.1.0 is validated for Claude Code only.
 
 The agent keeps every technical fact from the source (identifiers, numbers, commands, constraints, caveats, stated uncertainty) and writes for a specific reader, without filler, inflated claims, or formulaic formatting.
@@ -18,20 +20,23 @@ It doesn't plan or gather requirements; use a skill such as `to-spec`. It doesn'
 
 ## Install
 
-Clone the repository and link the skill directory, not the repository root, into Claude Code's skills folder. The link follows the clone, so `git pull` updates it.
+Install the skill for Claude Code with the [skills CLI](https://github.com/vercel-labs/skills):
 
 ```sh
-git clone <repository-url> technical-writing
-cd technical-writing
-git checkout v0.1.0   # optional: pin a release
-
-mkdir -p ~/.claude/skills
-ln -s "$PWD/skills/technical-writing" ~/.claude/skills/technical-writing
+npx skills add afreire-laptop/technical-writing --skill technical-writing -g -a claude-code
 ```
 
-For one project, link it into that repository's `.claude/skills/` instead. Start a new session after installing.
+This copies the skill to `~/.claude/skills/technical-writing`. Keep `-a claude-code`: without it, the CLI installs into every agent it detects, Codex included, and in our evals a one-paragraph writing rule did as well with Codex; Pi was not measured. If you list more than one agent, add `--copy`: with several agents the CLI defaults to symlinks and keeps the main copy in `~/.agents/skills/`, which Codex and Pi also load.
 
-Codex and Pi load the skill from `~/.agents/skills/`, but in our evals a one-paragraph writing rule did as well with Codex, and Pi was not measured. Pi reads `~/.claude/skills/` only when its settings list that directory.
+For one project, run the command in the repository without `-g`. The CLI copies the skill to `.claude/skills/technical-writing` and records it in `skills-lock.json`. Run `npx skills update` to update; `-g` or `-p` limits it to global or project skills.
+
+To pin a release, install from its tag. `update` keeps a pinned install on that tag; run `add` again to move it.
+
+```sh
+npx skills add https://github.com/afreire-laptop/technical-writing/tree/v0.1.0/skills/technical-writing -g -a claude-code
+```
+
+Start a new session after installing.
 
 ## Use
 
@@ -61,7 +66,9 @@ skills/technical-writing/SKILL.md            the skill
 skills/technical-writing/agents/openai.yaml  Codex display name and short description
 evals/                                       cases, fixtures, references, runner, results
 CHANGELOG.md                                 release history
-.github/workflows/ci.yml                     runs lint and selftest on every push and pull request
+release-please-config.json                   release pull request and changelog settings
+.github/workflows/ci.yml                     lint, selftest, type check, and commit messages on every push and pull request
+.github/workflows/release.yml                release pull requests and tags
 ```
 
 ## Versioning
@@ -81,15 +88,16 @@ Git tags and [`CHANGELOG.md`](CHANGELOG.md) record versions. The frontmatter has
 
 To release:
 
-1. Move the `Unreleased` entries in `CHANGELOG.md` under the new version.
-2. Run `uv run evals/run.py lint` and `uv run evals/run.py selftest`.
-3. For a minor or major release, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`, then copy the report and the calibration result into `evals/results/vX.Y.Z.md`. A patch release runs only the cases its change affects.
-4. Commit, then tag: `git tag -a vX.Y.Z -m "technical-writing vX.Y.Z"`.
+1. Merge changes to `main`. release-please keeps a pull request titled `chore(release): vX.Y.Z` open, with the next version and its `CHANGELOG.md` entry.
+2. For a minor or major release, before merging that pull request, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`. Commit the report and the calibration result to `main` as `evals/results/vX.Y.Z.md`, with the calibration under `## Judge spot-check`. A patch release runs only the cases its change affects.
+3. Merge the release pull request. The release workflow checks for the results file and tags `vX.Y.Z`.
+
+If a minor or major release pull request is merged without the results file, nothing is tagged and the release workflow fails on every push. To recover, change the merged pull request's label from `autorelease: pending` to `autorelease: tagged`, commit the results file, and run `gh release create vX.Y.Z --target <commit-with-results>`.
 
 ## Design decisions
 
 - The skill is one file. Every run needs the fact rules, the writing guidance, and the output contract, and each artifact note is a line or two. Reference files would save a few hundred tokens per activation but add a read the agent may skip.
-- It lives in `skills/technical-writing/`, so installs link only the skill, never the evals, and the layout matches what multi-harness tools expect.
+- It lives in `skills/technical-writing/`, so installs get only the skill, never the evals, and the layout matches what multi-harness tools expect.
 - The description is about 70 tokens: the artifact types that should trigger it, and one exclusion for agent-facing text.
 - The rules come from running the cases without the skill first. Baseline models already kept facts well. They failed on long commentary after the document, bold and emoji, and their own analysis written as the author's. Early drafts of the skill added empty sections and TODO stubs, so section checklists became reader priorities.
 - The fact rules have an order: secrets and personal data first, then the facts this reader needs, then writing only what the source supports, then the author's voice. "Keep every fact" alone conflicts with relevance edits and with removing sensitive material.
