@@ -14,7 +14,8 @@ They follow the practices in Anthropic's [skill authoring guide](https://platfor
 | `triggers.json` | 10 should-trigger queries and 10 near misses, in skill-creator's trigger eval-set format. |
 | `conditions/short-rule.md` | Condition B: the strongest short writing rule we could write, the skill's real competitor. |
 | `judge.md` | The judge prompt. |
-| `run.py` | The runner. Python 3.10+, run with uv; Pydantic is its one dependency. |
+| `run.py` | The runner's command line. Python 3.10+, run with uv; Pydantic is its one dependency. |
+| `runner/` | The runner's modules. `commands.py` has one handler per subcommand and `io.py` the file and process access; the other modules (`models`, `prompts`, `harness`, `checks`, `report`, `gates`, `lint`, `calibrate`, `selftest`) touch no files or processes and import neither. |
 | `run.py.lock` | The runner's pinned dependencies, with hashes. Regenerate with `uv lock --script evals/run.py`. |
 | `results/` | Committed summaries of release runs. Raw runs go to `runs/`, which is git-ignored. |
 
@@ -29,7 +30,7 @@ uv run evals/run.py lint        # skill frontmatter, budgets, eval data
 uv run evals/run.py selftest    # graders: references pass, raw inputs fail
 
 # Type-check the runner, as CI does.
-uvx mypy==2.3.1 --strict --python-executable "$(uv python find --script evals/run.py)" evals/run.py
+uvx mypy==2.3.1 --strict --python-executable "$(uv python find --script evals/run.py)" evals/run.py evals/runner
 
 # Smoke run: one trial, 42 generations, 28 judgements, 40 trigger runs.
 uv run evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
