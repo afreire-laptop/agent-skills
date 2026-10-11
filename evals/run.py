@@ -31,15 +31,13 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import random
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from pathlib import Path
@@ -47,23 +45,24 @@ from typing import TypeVar
 
 from pydantic import ValidationError
 
-from runner.checks import check_rows, input_word_count, regex_flags, run_check, word_count
-from runner.gates import gates, missing_results
+from runner.calibrate import calibration_group, calibration_picks, key_header, packet_header
+from runner.checks import check_rows, input_word_count, word_count
 from runner.harness import (
     claude_command, claude_discovered, claude_loaded_skill, claude_trigger_command, codex_base_command,
     codex_exec_command, codex_read_skill, json_values, judges_for, parse_claude_reply, parse_codex_output,
 )
+from runner.lint import lint_data, lint_skill, relative_links
 from runner.models import (
-    CHECK_ROWS, CONDITIONS, DIMENSIONS, HARNESSES, SKILL_NAME, TRIGGER_QUERIES, M, CallResult, Case, CaseFile,
-    Check, CheckRow, ConditionStats, GenerationMeta, GroupCounts, Guidance, HarnessOptions, HarnessStats,
-    Invocation, JudgedConditions, Judged, JudgeResult, Manifest, Model, PairStats, PatternCheck, ReportParams,
-    StoredJudgement, TriggerOutcome, TriggerQuery, TriggerRun, TriggerStats, first_error,
+    CHECK_ROWS, CONDITIONS, HARNESSES, SKILL_NAME, TRIGGER_QUERIES, M, CallResult, Case, CaseFile, CheckRow,
+    GenerationMeta, Guidance, HarnessOptions, Invocation, JudgedConditions, Judged, Manifest, Model, ReportParams,
+    StoredJudgement, TriggerOutcome, TriggerQuery, TriggerRun, first_error,
 )
 from runner.prompts import (
     GUIDANCE, blind_mapping, build_judge_prompt, build_prompt, judge_schema, judgement_error, sha256,
     split_frontmatter,
 )
-from runner.report import group_verdict, report
+from runner.report import report
+from runner.selftest import reference_line, selftest_gates, selftest_judge_schema, selftest_partial_judgement
 
 ROOT = Path(__file__).resolve().parent.parent
 EVALS = ROOT / "evals"
@@ -74,10 +73,6 @@ TRIGGERS_FILE = EVALS / "triggers.json"
 SHORT_RULE_FILE = EVALS / "conditions" / "short-rule.md"
 JUDGE_TEMPLATE = EVALS / "judge.md"
 RUNS_DIR = EVALS / "runs"
-
-
-DESCRIPTION_BUDGET_CHARS = 300  # own budget; the spec allows 1024
-BODY_BUDGET_TOKENS = 2500  # estimated as characters / 4
 
 
 # --------------------------------------------------------------------------- data
@@ -237,15 +232,6 @@ def cmd_check(args: argparse.Namespace) -> None:
     print(f"check: {len(rows)} results, {failed} failed -> {(run / 'checks.json').relative_to(ROOT)}")
 
 
-def reference_line(case: Case, reference: str, raw: str, input_words: int) -> tuple[bool, str]:
-    """Whether the reference passes every check and the raw input fails at least one."""
-    ref_failures = [c.id for c in case.checks if not run_check(c, reference, input_words)[0]]
-    raw_failures = [c.id for c in case.checks if not run_check(c, raw, input_words)[0]]
-    ok = not ref_failures and bool(raw_failures)
-    return ok, (f"{'ok  ' if ok else 'FAIL'} {case.name}: reference fails {ref_failures or 'none'}; "
-                f"raw input fails {len(raw_failures)}/{len(case.checks)} checks")
-
-
 def cmd_selftest(_args: argparse.Namespace) -> int:
     """Grader self-test: each reference solution passes every check, and each raw
     fixture fails at least one, so the checks are satisfiable and discriminating."""
@@ -262,85 +248,10 @@ def cmd_selftest(_args: argparse.Namespace) -> int:
         print(line)
         errors += not ok
     errors += selftest_gates()
-    errors += selftest_partial_judgement()
+    errors += selftest_partial_judgement(load_cases()[0].name, len(load_triggers()))
     errors += selftest_judge_schema()
     print("selftest: ok" if not errors else f"selftest: {errors} failure(s)")
     return 1 if errors else 0
-
-
-def selftest_gates() -> int:
-    """The release gates must fail closed on partial runs and decide correctly on full ones."""
-    def harness(c_preferred: int, b_preferred: int, cases_preferred: int) -> HarnessStats:
-        cond = ConditionStats(check_pass_rate=0.97, check_pass_sd=None, expectation_pass_rate=None,
-                              expectation_unknown=0, fidelity_pass_rate=0.9, sensitive_leaks=0,
-                              mean_input_tokens=None, mean_output_words=None)
-        pair = PairStats(groups=GroupCounts(first=c_preferred, tie=0, second=b_preferred),
-                         cases_preferred=tuple(f"case{i}" for i in range(cases_preferred)),
-                         net_by_case={}, mean_case_preference=0.0, ci95=(0.0, 0.0))
-        return HarnessStats(conditions={"B": cond, "C": cond}, pairs={"C_vs_B": pair},
-                            triggers=TriggerStats(recall=0.9, false_positive_rate=0.1, runs=0, undiscovered_runs=0))
-
-    full = {"claude": harness(30, 10, 5), "codex": harness(25, 15, 4)}
-    scenarios: list[tuple[str, dict[str, HarnessStats], list[str], str]] = [
-        ("empty run", {}, [], "INCOMPLETE"),
-        ("one harness missing", {"claude": full["claude"]}, [], "INCOMPLETE"),
-        ("no judge results", {**full, "codex": full["codex"].model_copy(update={"pairs": {}})}, [], "INCOMPLETE"),
-        ("missing generations", full, ["generation codex/x/C/t3"], "INCOMPLETE"),
-        ("complete and passing", full, [], "SHIP"),
-        ("short rule as good", {**full, "codex": harness(10, 12, 2)}, [], "SIMPLIFY"),
-    ]
-    failures = 0
-    for name, stats, missing, expected in scenarios:
-        _, _, verdict = gates(stats, 7, HARNESSES, missing)
-        ok = verdict.startswith(expected)
-        failures += not ok
-        print(f"{'ok  ' if ok else 'FAIL'} gates, {name}: {verdict}")
-    return failures
-
-
-def selftest_partial_judgement() -> int:
-    """A group judged while one output was missing must count as missing until it is redone."""
-    case = load_cases()[0].name
-    params = ReportParams(run_id="selftest", harnesses=("claude",), conditions=("A", "B", "C"), trials=1,
-                          judge_harness="claude", trigger_runs=0)
-    complete = {("claude", case, c, 1) for c in params.conditions}
-    failures = 0
-    for mapping, expect_missing in (({"R1": "B", "R2": "C"}, True),
-                                    ({"R1": "B", "R2": "C", "R3": "A"}, False)):
-        judged = {("claude", case, "t1", "claude"): set(mapping.values())}
-        missing = missing_results(params, [case], complete, complete, judged, set(), len(load_triggers()))
-        ok = bool(missing) == expect_missing
-        failures += not ok
-        print(f"{'ok  ' if ok else 'FAIL'} judgement over {','.join(sorted(mapping.values()))}: "
-              f"{'counted missing' if missing else 'complete'}")
-    return failures
-
-
-def schema_sample(schema: Mapping[str, object], k: int) -> object:
-    """A value that `schema` allows, taking the k-th value of every enum (cycling)."""
-    enum, kind = schema.get("enum"), schema.get("type")
-    if isinstance(enum, list):
-        return enum[k % len(enum)]
-    properties, items = schema.get("properties"), schema.get("items")
-    if kind == "object" and isinstance(properties, dict):
-        return {name: schema_sample(sub, k) for name, sub in properties.items()}
-    if kind == "array" and isinstance(items, dict):
-        return [schema_sample(items, k)]
-    return {"string": "x", "integer": 1}[str(kind)]
-
-
-def selftest_judge_schema() -> int:
-    """Every output the judge schema allows must validate as a JudgeResult, or valid
-    judgements would be rejected. The schema is sent to the judges and must not change."""
-    errors = []
-    for k in range(len(DIMENSIONS)):
-        try:
-            JudgeResult.model_validate(schema_sample(judge_schema(), k))
-        except ValidationError as exc:
-            errors.append(first_error(exc))
-    print(f"{'ok  ' if not errors else 'FAIL'} judge schema and JudgeResult model agree"
-          + (f": {errors[0]}" if errors else ""))
-    return len(errors)
 
 
 # --------------------------------------------------------------------------- judge
@@ -496,9 +407,6 @@ def cmd_triggers(args: argparse.Namespace, opts: HarnessOptions) -> None:
 # -------------------------------------------------------------------------- report
 
 
-VERDICT_MARKS: Mapping[int | None, str] = {1: "X", -1: "Y", 0: "tie", None: "–"}
-
-
 def report_params(args: argparse.Namespace) -> ReportParams:
     return ReportParams(run_id=args.run_id, harnesses=tuple(args.harness), conditions=tuple(args.conditions),
                         trials=args.trials, judge_harness=args.judge_harness, trigger_runs=args.trigger_runs)
@@ -531,91 +439,6 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------- lint
-
-SKILL_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
-
-
-def scalar(meta: Mapping[str, str | dict[str, str]], key: str) -> str:
-    value = meta.get(key, "")
-    return value if isinstance(value, str) else ""
-
-
-def relative_links(body: str) -> list[str]:
-    return [t for t in re.findall(r"\]\(([^)#\s]+)\)", body) if not re.match(r"[a-z]+://", t)]
-
-
-def plain_yaml_problem(line: str) -> str | None:
-    # Harnesses with strict YAML parsers (Pi, Codex's validator) silently drop a skill whose
-    # frontmatter does not parse; an unquoted ": " or " #" inside a value is the usual cause.
-    value = line.partition(":")[2].strip()
-    if value and value[0] not in "\"'" and (": " in value or " #" in value or value[0] in "*&!|>%@`{["):
-        return f"frontmatter value is not valid plain YAML; quote it: {line.strip()[:60]}"
-    return None
-
-
-def lint_skill(text: str, broken_links: Sequence[str], openai_yaml: str | None) -> tuple[list[str], list[str], str]:
-    """Errors, warnings, and a size summary for SKILL.md."""
-    meta, body = split_frontmatter(text)
-    name, desc = scalar(meta, "name"), scalar(meta, "description")
-    block = re.match(r"\A---\n(.*?)\n---", text, re.S)
-    unknown = sorted(set(meta) - SKILL_KEYS)
-    lines, tokens = body.count("\n") + 1, len(body) // 4
-    short = re.search(r'short_description:\s*"([^"]*)"', openai_yaml) if openai_yaml is not None else None
-    rules = [
-        (not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", name) or len(name) > 64,
-         f"name {name!r} violates the Agent Skills name rules"),
-        (name != SKILL_DIR.name, f"name {name!r} does not match directory {SKILL_DIR.name!r}"),
-        (not 1 <= len(desc) <= 1024, f"description length {len(desc)} is outside 1–1024"),
-        (1 <= len(desc) <= 1024 and len(desc) > DESCRIPTION_BUDGET_CHARS,
-         f"description is {len(desc)} chars; budget is {DESCRIPTION_BUDGET_CHARS}"),
-        (bool(re.search(r"[<>]", desc)), "description must not contain XML tags"),
-        (bool(unknown), f"frontmatter keys outside the Agent Skills spec: {unknown}"),
-        (lines > 500, f"body has {lines} lines; the spec recommends under 500"),
-        (tokens > BODY_BUDGET_TOKENS, f"body is ~{tokens} tokens; budget is {BODY_BUDGET_TOKENS}"),
-        *[(True, f"broken relative link: {target}") for target in broken_links],
-        (short is not None and not 25 <= len(short.group(1)) <= 64,
-         f"openai.yaml short_description is {len(short.group(1)) if short else 0} chars; Codex wants 25–64"),
-    ]
-    yaml_problems = [p for p in map(plain_yaml_problem, block.group(1).splitlines() if block else []) if p]
-    errors = yaml_problems + [message for failed, message in rules if failed]
-    warnings = ["description should be third person"] if re.match(r"(I|You|We)\b", desc) else []
-    summary = f"skill: description {len(desc)} chars (~{len(desc) // 4} tokens); body {lines} lines (~{tokens} tokens)"
-    return errors, warnings, summary
-
-
-def pattern_problem(where: str, check: Check) -> str | None:
-    if not isinstance(check, PatternCheck):
-        return None
-    try:
-        re.compile(check.pattern, regex_flags(check.flags))
-    except re.error as exc:
-        return f"{where}: {check.id} pattern does not compile: {exc}"
-    return None
-
-
-def case_problems(case: Case, earlier: Sequence[Case], missing_files: Iterable[str]) -> list[str]:
-    where = f"case {case.name}"
-    check_ids = [c.id for c in case.checks]
-    rules = [
-        (any(c.id == case.id or c.name == case.name for c in earlier), f"{where}: duplicate id or name"),
-        *[(f in missing_files, f"{where}: missing file {f}") for f in case.files],
-        (len(set(check_ids)) != len(check_ids), f"{where}: duplicate check ids"),
-    ]
-    return [message for failed, message in rules if failed] + \
-        [p for p in (pattern_problem(where, c) for c in case.checks) if p]
-
-
-def lint_data(cases: Sequence[Case], missing_files: Iterable[str],
-              triggers: Sequence[TriggerQuery]) -> tuple[list[str], list[str], str]:
-    """Errors, warnings, and a size summary for cases.json and triggers.json."""
-    errors = [p for i, case in enumerate(cases) for p in case_problems(case, cases[:i], missing_files)]
-    positives = sum(1 for t in triggers if t.should_trigger)
-    negatives = len(triggers) - positives
-    warnings = [f"triggers.json is unbalanced: {positives} positive, {negatives} negative"] \
-        if abs(positives - negatives) > 2 else []
-    summary = (f"data: {len(cases)} cases, {sum(len(c.checks) for c in cases)} checks, "
-               f"{sum(len(c.expectations) for c in cases)} expectations, {len(triggers)} trigger queries")
-    return errors, warnings, summary
 
 
 T = TypeVar("T")
@@ -655,66 +478,6 @@ def cmd_lint(_args: argparse.Namespace) -> int:
 
 
 # ------------------------------------------------------------------------- calibrate
-
-CONDITION_NAMES = {"B": "short rule (B)", "C": "skill (C)"}
-Pick = tuple[Case, int, str, str]  # case, trial, condition shown as X, condition shown as Y
-
-
-def fenced(text: str, info: str = "") -> str:
-    """Fence text with more backticks than it contains, so nested fences survive."""
-    longest = max((len(m) for m in re.findall(r"`+", text)), default=0)
-    fence = "`" * max(3, longest + 1)
-    return f"{fence}{info}\n{text.rstrip()}\n{fence}"
-
-
-def calibration_picks(run_id: str, harness: str, cases: Sequence[Case], trials: int, groups: int,
-                      complete: set[tuple[str, int]]) -> list[Pick]:
-    """One random complete group per case, up to `groups`, with B and C as X and Y in random order."""
-    rng = random.Random(f"{run_id}:{harness}:calibrate")
-    order = list(cases)
-    rng.shuffle(order)
-    picks: list[Pick] = []
-    for case in order:
-        trial_order = list(range(1, trials + 1))
-        rng.shuffle(trial_order)
-        trial = next((t for t in trial_order if (case.name, t) in complete), None)
-        if trial is None:
-            continue
-        x, y = rng.sample(["B", "C"], 2)
-        picks.append((case, trial, x, y))
-        if len(picks) == groups:
-            break
-    return picks
-
-
-def packet_header(run_id: str, harness: str) -> list[str]:
-    return [f"# Calibration packet: {run_id}, {harness} writer", "",
-            "For each group, read the task and the source, then decide which response serves the "
-            "intended reader better, or call it a tie, and note why. Open `key.md` only when you "
-            "have decided every group.", ""]
-
-
-def key_header(run_id: str, harness: str) -> list[str]:
-    return [f"# Calibration key: {run_id}, {harness} writer", "",
-            "Judge columns give each judge's group verdict: the response that ranked better on more "
-            "of the four dimensions. Fill in your call, then count agreements per judge.", "",
-            "| Group | Case | Trial | X | Y | Claude judge | Codex judge | Your call |",
-            "|---|---|---|---|---|---|---|---|"]
-
-
-def calibration_group(number: int, pick: Pick, files: Sequence[tuple[str, str]], outputs: Mapping[str, str],
-                      judgements: Sequence[StoredJudgement]) -> tuple[list[str], str]:
-    """A group's packet section and its row in the key."""
-    case, trial, x, y = pick
-    verdicts = [VERDICT_MARKS[group_verdict(j, x, y)] for j in judgements]
-    row = (f"| {number} | {case.name} | t{trial} | {CONDITION_NAMES[x]} | {CONDITION_NAMES[y]} | "
-           f"{verdicts[0]} | {verdicts[1]} | |")
-    section = [f"## Group {number}", "", "### Task", "", case.prompt.strip(), "",
-               *[line for name, text in files for line in (f"### Source: `{name}`", "", fenced(text, "markdown"), "")],
-               *[line for label, cond in (("X", x), ("Y", y))
-                 for line in (f"### Response {label}", "", fenced(outputs[cond], "markdown"), "")],
-               "**Your call** (X, Y, or tie) and why:", "", "---", ""]
-    return section, row
 
 
 def cmd_calibrate(args: argparse.Namespace) -> int:
