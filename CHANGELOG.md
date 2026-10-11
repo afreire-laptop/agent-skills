@@ -1,17 +1,6 @@
 # Changelog
 
-All notable changes to this skill are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow the skill's [versioning policy](README.md#versioning).
-
-## [Unreleased]
-
-### Added
-
-- CI workflow that runs `lint` and `selftest` on Python 3.10 and 3.14, and type-checks the eval runner with `mypy --strict`.
-
-### Changed
-
-- Shorter, plainer README, revised with the skill itself.
-- The eval runner runs with uv (`uv run evals/run.py`) and depends on Pydantic, pinned with hashes in `evals/run.py.lock`. It validates every JSON file and CLI output it reads, so malformed input fails with a validation message instead of a traceback. Prompts, the judge schema, and seeds are unchanged, so earlier runs stay valid.
+All notable changes to this skill are recorded here, and versions follow the skill's [versioning policy](README.md#versioning). From 0.2.0 on, [release-please](https://github.com/googleapis/release-please) writes each entry from the commits since the previous release, and its open release pull request shows what is not yet released. Changes to the evals, docs, and CI are not listed; the commit history has them. The 0.1.0 entry follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.0] - 2026-10-10
 
