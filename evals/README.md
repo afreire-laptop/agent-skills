@@ -56,7 +56,7 @@ Each generation runs in a fresh temporary directory. Claude runs with tools and 
 
 ## Graders
 
-**Deterministic checks** (`checks` in `cases.json`) cover what code can verify: identifiers, numbers, and commands that must survive; sensitive values that must not appear; Conventional Commits header grammar; filler and stock phrases; length relative to the input. Types are `contains`, `not_contains`, `regex`, `not_regex`, and `max_word_ratio`. A check can target the whole `output`, the commit `message` (the first fenced code block, or the whole output if there is none), or its `header` (first line). Checks grade the outcome, never the path taken.
+**Deterministic checks** (`checks` in `cases.json`) cover what code can verify: identifiers, numbers, and commands that must survive; sensitive values that must not appear; Conventional Commits header grammar; filler and stock phrases; length relative to the input. Every case caps the output's length with a `max_word_ratio` check, set at 1.5 times the reference solution's length relative to the input and rounded up to a tenth; `verbose-readme` keeps the 0.6 it had in v0.1.0. A short output that drops a fact still fails its `keeps-*` checks. Types are `contains`, `not_contains`, `regex`, `not_regex`, and `max_word_ratio`. A check can target the whole `output`, the commit `message` (the first fenced code block, or the whole output if there is none), or its `header` (first line). Checks grade the outcome, never the path taken.
 
 **The judges** grade what code cannot. For each case and trial, a panel of two judges, one from each model family, independently receives the task, the source files, the case's `expectations`, and the anonymized outputs, each judge in its own seeded random order. Because both families judge every writer's outputs, a writer effect can be told apart from one judge family's taste; in a design where the judge is always the other family, the two are confounded. Each judge returns:
 
@@ -100,7 +100,7 @@ If gates 1 and 2 pass but gate 3 fails, the short rule does the job, and the rec
 
 1. Add a fixture under `fixtures/` with the flaw the case targets and enough specific facts to check.
 2. Add the case to `cases.json`. Keep `expectations` checkable by someone reading only the source and the output. Give every check a descriptive `id`.
-3. Write the reference solution in `reference/<name>.md`.
+3. Write the reference solution in `reference/<name>.md`, and add the length cap: 1.5 times the reference's word count divided by the input's, rounded up to a tenth.
 4. Run `lint` and `selftest`. The reference must pass every check, and the raw fixture must fail at least one.
 
 ## Limitations

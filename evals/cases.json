@@ -167,6 +167,11 @@
           "type": "not_regex",
           "pattern": "(?<!\\d[\\s,.\\u202f\\u00a0])\\b(?!600[\\s,.\\u202f\\u00a0]?000\\b)\\d+(\\.\\d+)?\\s?(ms|milliseconds|%|rps|qps|req/s|x faster)(?!\\w)",
           "flags": "i"
+        },
+        {
+          "id": "at-most-180pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 1.8
         }
       ]
     },
@@ -302,6 +307,11 @@
           "id": "no-invented-cost",
           "type": "not_regex",
           "pattern": "[$€£]\\s?\\d"
+        },
+        {
+          "id": "at-most-120pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 1.2
         }
       ]
     },
@@ -392,6 +402,11 @@
           "type": "not_regex",
           "pattern": "\\d+\\s?%\\s+coverage|coverage[^\\n.]{0,20}\\d+\\s?%",
           "flags": "i"
+        },
+        {
+          "id": "at-most-100pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 1.0
         }
       ]
     },
@@ -455,6 +470,11 @@
           "type": "contains",
           "target": "message",
           "value": "#317"
+        },
+        {
+          "id": "at-most-50pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.5
         }
       ]
     },
@@ -530,6 +550,11 @@
           "type": "not_regex",
           "pattern": "^\\s*[-*]\\s+\\*\\*[^*\\n]+\\*\\*",
           "flags": "m"
+        },
+        {
+          "id": "at-most-90pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.9
         }
       ]
     },
@@ -617,6 +642,11 @@
           "id": "keeps-batch-time",
           "type": "contains",
           "value": "18:30"
+        },
+        {
+          "id": "at-most-160pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 1.6
         }
       ]
     }
