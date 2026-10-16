@@ -33,10 +33,10 @@ uv run evals/run.py selftest    # graders: references pass, raw inputs fail
 # Type-check the runner, as CI does.
 uvx mypy==2.3.1 --strict --python-executable "$(uv python find --script evals/run.py)" evals/run.py evals/runner
 
-# Smoke run: one trial, 42 generations, 28 judgements, 40 trigger runs.
+# Smoke run: one trial, 48 generations, 32 judgements, 40 trigger runs.
 uv run evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
 
-# Release run: three trials, 126 generations, 84 judgements, 120 trigger runs.
+# Release run: three trials, 144 generations, 96 judgements, 120 trigger runs.
 uv run evals/run.py all --run-id v0.1.0 --judge-effort high
 ```
 
@@ -56,7 +56,7 @@ Each generation runs in a fresh temporary directory. Claude runs with tools and 
 
 ## Graders
 
-**Deterministic checks** (`checks` in `cases.json`) cover what code can verify: identifiers, numbers, and commands that must survive; sensitive values that must not appear; Conventional Commits header grammar; filler and stock phrases; length relative to the input. Types are `contains`, `not_contains`, `regex`, `not_regex`, and `max_word_ratio`. A check can target the whole `output`, the commit `message` (the first fenced code block, or the whole output if there is none), or its `header` (first line). Checks grade the outcome, never the path taken.
+**Deterministic checks** (`checks` in `cases.json`) cover what code can verify: identifiers, numbers, and commands that must survive; sensitive values that must not appear; Conventional Commits header grammar; filler and stock phrases; length relative to the input. Every case caps the output's length with a `max_word_ratio` check, set at 1.5 times the reference solution's length relative to the input and rounded up to a tenth; `verbose-readme` keeps the 0.6 it had in v0.1.0. A cap counts every word of the output, code and the note to the user included, as the reference's length does; it bounds the whole response and is not one of the skill's per-artifact limits, such as about 60 words of prose per review comment. A short output that drops a fact still fails its `keeps-*` checks. Types are `contains`, `not_contains`, `regex`, `not_regex`, and `max_word_ratio`. A check can target the whole `output`, the commit `message` (the first fenced code block, or the whole output if there is none), or its `header` (first line). Checks grade the outcome, never the path taken.
 
 **The judges** grade what code cannot. For each case and trial, a panel of two judges, one from each model family, independently receives the task, the source files, the case's `expectations`, and the anonymized outputs, each judge in its own seeded random order. Because both families judge every writer's outputs, a writer effect can be told apart from one judge family's taste; in a design where the judge is always the other family, the two are confounded. Each judge returns:
 
@@ -64,9 +64,9 @@ Each generation runs in a fresh temporary directory. Claude runs with tools and 
 - the facts each output invented or dropped, and a fidelity verdict;
 - a ranking per dimension (`clarity`, `naturalness`, `brevity`, `conventions`), ties allowed, with reasoning before the ranking.
 
-The report reduces each judgement to one verdict per pair of conditions (C vs B, C vs A, B vs A): the condition that ranks better on more dimensions wins that group. The four dimension rankings from one call are correlated, so they are shown for description but never counted as separate votes. Verdicts are reported per judge and pooled, summed per case, and summarized as the mean per-case preference (−1 to +1) with a 95% bootstrap interval over cases. With seven cases that interval is wide; read it as a measure of how much to trust the direction, not as a significance test. The report also audits position bias, though with few groups it is confounded with which condition happened to be shown first.
+The report reduces each judgement to one verdict per pair of conditions (C vs B, C vs A, B vs A): the condition that ranks better on more dimensions wins that group. The four dimension rankings from one call are correlated, so they are shown for description but never counted as separate votes. Verdicts are reported per judge and pooled, summed per case, and summarized as the mean per-case preference (−1 to +1) with a 95% bootstrap interval over cases. With eight cases that interval is wide; read it as a measure of how much to trust the direction, not as a significance test. The report also audits position bias, though with few groups it is confounded with which condition happened to be shown first.
 
-Deviation from the cited practice: one judge call grades all dimensions for a group, rather than one isolated call per dimension. This keeps a release run at 84 judgements instead of 336. The mitigations are structured output, reasoning before verdicts, randomized order, a two-family panel, group-level aggregation, and human calibration.
+Deviation from the cited practice: one judge call grades all dimensions for a group, rather than one isolated call per dimension. This keeps a release run at 96 judgements instead of 384. The mitigations are structured output, reasoning before verdicts, randomized order, a two-family panel, group-level aggregation, and human calibration.
 
 **Calibrate the judge before trusting it.** For a release, `uv run evals/run.py calibrate --run-id <run-id>` writes `runs/<run-id>/calibration/packet.md`: one randomly chosen group per case, up to five, showing the task, the source, and the skill's and the short rule's outputs as X and Y in random order. A person decides each group, then fills in `key.md`, which holds both judges' verdicts, and puts the agreement rate in the results file. If agreement is poor, fix `judge.md` before drawing conclusions.
 
@@ -91,7 +91,7 @@ These thresholds were fixed before the first full run; gate 3's aggregation was 
 
 1. **Safety:** under C, no sensitive value from a fixture appears in any output.
 2. **Fidelity:** C's deterministic pass rate and judge fidelity pass rate are each at least B's minus 2 percentage points.
-3. **Value over the short rule:** pooled over both judges and all trials, more groups prefer C over B than the reverse, and C is net-preferred on at least 4 of the 7 cases.
+3. **Value over the short rule:** pooled over both judges and all trials, more groups prefer C over B than the reverse, and C is net-preferred on at least half the cases, rounded up (4 of 8).
 4. **Triggering:** recall of at least 80% on should-trigger queries and a false-positive rate of at most 20% on near misses.
 
 If gates 1 and 2 pass but gate 3 fails, the short rule does the job, and the recommendation is to adopt it instead of the skill. If gate 1 or 2 fails, the skill needs fixing whatever else passes.
@@ -100,12 +100,12 @@ If gates 1 and 2 pass but gate 3 fails, the short rule does the job, and the rec
 
 1. Add a fixture under `fixtures/` with the flaw the case targets and enough specific facts to check.
 2. Add the case to `cases.json`. Keep `expectations` checkable by someone reading only the source and the output. Give every check a descriptive `id`.
-3. Write the reference solution in `reference/<name>.md`.
+3. Write the reference solution in `reference/<name>.md`, and add the length cap: 1.5 times the reference's word count divided by the input's, rounded up to a tenth.
 4. Run `lint` and `selftest`. The reference must pass every check, and the raw fixture must fail at least one.
 
 ## Limitations
 
-- Seven cases are enough to catch large effects, not small ones. Treat differences of a few points as noise, and read the bootstrap interval before the point estimate.
+- Eight cases are enough to catch large effects, not small ones. Treat differences of a few points as noise, and read the bootstrap interval before the point estimate.
 - The fixtures were written by the same author as the skill, and the skill was revised while looking at results on them. There is no held-out set yet. Guard against fitting: nothing in `SKILL.md` may refer to a specific fixture, and the next cases should come from real documents written by other people.
 - Model judges share biases with model writers. Cross-family judging and human calibration reduce this but do not remove it.
 - Condition C injects the skill body into the prompt instead of loading it through each harness's skill mechanism. The trigger evals cover loading; the combination is checked by hand during release.

@@ -28,12 +28,12 @@ Before finishing, compare the draft with the source: every needed fact is presen
 
 ## Write for the reader
 
-- Lead with what the reader needs first (the decision, the change, the action, the answer) within the artifact's usual structure. Background follows.
+- Lead with what the reader needs first (the decision, the change, the action, the answer) within the artifact's usual structure.
+- Be brief by default: keep what the reader needs to act or decide, and point to the rest. Evidence, investigation history, and background go behind a link to where they live, such as an issue, an incident, or a log; without a link, leave them out and name them in your note, so the user can ask for an appendix. A reason stays; how it was found goes, such as reproduction steps, log searches, and dead ends. Cut framing ("In this section we will…"), restatement, and closing summaries. "Keep the facts" still wins: a shorter document that drops a fact the reader needs is wrong.
 - Be specific: numbers, names, conditions, and failure behaviour ("fails open and emits `ratelimit.redis_unavailable`") instead of qualities ("robust", "reliable").
 - Use one term per concept throughout.
 - Match form to content: numbered steps for procedures, a table for items compared on the same attributes, prose for reasoning and trade-offs. Add headings where the reader needs to navigate.
 - Keep emphasis rare. Bold marks a defined term or a warning the reader must not miss, not whole sentences or list labels. Structure comes from headings and lists, without emoji or status icons.
-- Concise means no wasted words, not fewer facts. Cut framing ("In this section we will…"), restatement, and closing summaries; keep the depth the reader needs.
 
 ## Revision pass
 
@@ -57,10 +57,11 @@ What each artifact's reader looks for first, and what drafts most often lose. Us
 - **RFC or spec:** reviewers look for the decision and the hard constraints first; drafts most often lose the rejected alternatives with reasons, non-goals, and open questions. Restructure freely; decisions stay the author's.
 - **ADR:** a title that states the decision, then the usual order: status (Proposed until accepted), the context that forced the decision, the decision, consequences good and bad, and the alternatives with why each lost. Supersede an accepted ADR with a new one instead of editing it.
 - **PR description:** a title naming the change, why (with the issue link), what a reviewer must look at, testing exactly as done including what was not run, and risks or migrations. Call out unrelated changes.
+- **Review comment:** the weight and the ask first (`Required:`, `Suggestion:`, or `Nit:`), then one reason, then the fix, in about 60 words of prose; code doesn't count.
 - **Commit message:** follow the repository's history. Under Conventional Commits: `type(scope): summary`, with `!` and/or a `BREAKING CHANGE:` footer saying what breaks and how to migrate. Otherwise an imperative summary of about 50 characters, a blank line, and a body wrapped near 72 that explains why.
 - **Release notes:** written for the release's users: breaking changes and required actions first, then changes in user terms, with issue or PR links.
 - **Explanation or handoff:** the answer or current state first, then the reasoning. A handoff names decisions made, open work and blockers, and where things live.
 
 ## Output
 
-Give the document itself. Everything inside it addresses its reader. After it, and clearly separated from it, add a note to the user only for what they must act on (missing facts, content you removed, claims to verify), in at most three short bullets. Point to gaps the document already marks instead of restating them.
+Give the document itself. Everything inside it addresses its reader. After it, and clearly separated from it, add a note to the user only for what they must act on (missing facts, content you removed, claims to verify): at most three one-sentence bullets and about 50 words in all, each the action and its reason. Point to gaps the document already marks instead of restating them.

@@ -9,6 +9,7 @@ The agent keeps every technical fact from the source (identifiers, numbers, comm
 ## What it does
 
 - Starts from the reader: who they are, what they need to do or decide, and what they already know.
+- Keeps documents brief by default: the facts the reader needs to act or decide stay, and evidence, investigation history, and background go behind a link. The user can ask for them in an appendix.
 - Follows the repository's conventions first: PR templates, commit history, commitlint config, ADR folders, the CHANGELOG format, and neighbouring docs.
 - Writes only what the source supports. Missing facts go in a short note to the user, or into the document as marked gaps when it is a draft under review. The agent's own analysis never appears as the author's.
 - Replaces secrets, credentials, and personal data with placeholders.
@@ -74,11 +75,11 @@ The rules restate these sources; nothing is copied.
 - It works from the material the agent has. It cannot supply missing facts or verify claims beyond the source.
 - Its guidance is tuned for English. It follows the language of the request, but its examples of formulaic prose are English.
 - Its benefit over a short writing rule is measured for Claude Code only.
-- The eval suite is small (seven cases) and its judges are models; see [`evals/README.md`](evals/README.md#limitations).
+- The eval suite is small (eight cases) and its judges are models; see [`evals/README.md`](evals/README.md#limitations).
 
 ## Evaluation
 
-The eval suite compares the skill with no guidance and with a one-paragraph writing rule, on seven cases, in Claude Code and Codex. Code checks preserved facts and leaked secrets; a blind panel of one judge from each model family grades the rest; 20 queries, half of them near misses, test triggering. The verdict fails closed if any result is missing. [`evals/README.md`](evals/README.md) has the method and release gates.
+The eval suite compares the skill with no guidance and with a one-paragraph writing rule, on eight cases, in Claude Code and Codex. Code checks preserved facts and leaked secrets; a blind panel of one judge from each model family grades the rest; 20 queries, half of them near misses, test triggering. The verdict fails closed if any result is missing. [`evals/README.md`](evals/README.md) has the method and release gates.
 
 Result for v0.1.0 ([details](evals/results/v0.1.0.md)): with Claude Code, judges preferred the skill over the short rule in 30 of 42 groups, and the rule in 9. With Codex, they preferred the rule, 21 groups to 15, although the skill kept more facts. A person's blind check of five groups agreed with 9 of 10 judge verdicts. For Codex and Pi, put the short rule in the global instructions instead of installing the skill.
 

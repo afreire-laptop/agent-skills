@@ -167,6 +167,11 @@
           "type": "not_regex",
           "pattern": "(?<!\\d[\\s,.\\u202f\\u00a0])\\b(?!600[\\s,.\\u202f\\u00a0]?000\\b)\\d+(\\.\\d+)?\\s?(ms|milliseconds|%|rps|qps|req/s|x faster)(?!\\w)",
           "flags": "i"
+        },
+        {
+          "id": "at-most-180pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 1.8
         }
       ]
     },
@@ -302,6 +307,11 @@
           "id": "no-invented-cost",
           "type": "not_regex",
           "pattern": "[$€£]\\s?\\d"
+        },
+        {
+          "id": "at-most-120pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 1.2
         }
       ]
     },
@@ -392,6 +402,11 @@
           "type": "not_regex",
           "pattern": "\\d+\\s?%\\s+coverage|coverage[^\\n.]{0,20}\\d+\\s?%",
           "flags": "i"
+        },
+        {
+          "id": "at-most-100pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 1.0
         }
       ]
     },
@@ -455,6 +470,11 @@
           "type": "contains",
           "target": "message",
           "value": "#317"
+        },
+        {
+          "id": "at-most-50pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.5
         }
       ]
     },
@@ -530,6 +550,11 @@
           "type": "not_regex",
           "pattern": "^\\s*[-*]\\s+\\*\\*[^*\\n]+\\*\\*",
           "flags": "m"
+        },
+        {
+          "id": "at-most-90pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.9
         }
       ]
     },
@@ -617,6 +642,109 @@
           "id": "keeps-batch-time",
           "type": "contains",
           "value": "18:30"
+        },
+        {
+          "id": "at-most-160pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 1.6
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "review-comments",
+      "artifact": "code review comments",
+      "prompt": "Turn my review notes into the comments I'll post on PR #614.",
+      "files": [
+        "evals/fixtures/08-review-notes.md"
+      ],
+      "expected_output": "Five short review comments, each anchored to its line and opening with its weight and ask, then one reason and the fix, without the investigation history.",
+      "expectations": [
+        "Gives one comment for each finding, anchored to its file and line: jitter (retry.py:42), 4xx retries (retry.py:56), Retry-After (retry.py:47), the last error message (models.py:17), and MAX_ATTEMPTS (retry.py:9). Writes no comment about the duplicate deliveries, which the notes say the PR did not cause.",
+        "Each comment opens with its weight and the ask, then gives one reason, then the fix: jitter and 4xx retries are required before merge, Retry-After and the last error message are non-blocking suggestions (the last error message can wait for a follow-up PR), and MAX_ATTEMPTS is a nit.",
+        "Keeps what the PR author needs to act: docs/webhooks.md#retries says retries MUST use full jitter; among the 4xx only 408 and 429 are retried; tests/test_retry.py needs a 410 case (no retry) and a 429 case (retry); and each fix as given in the notes.",
+        "Leaves out the investigation history: the delay-cap calculation, the step-by-step account of the 500-delivery simulation and the staging-log grep, and the duplicate-delivery dead end. Citing one result as a comment's reason is fine.",
+        "Keeps each comment to about 60 words of prose or fewer, not counting code.",
+        "Adds no findings, line numbers, code, or claims that are not in the notes."
+      ],
+      "checks": [
+        {
+          "id": "keeps-jitter-line",
+          "type": "regex",
+          "pattern": "\\b42\\b"
+        },
+        {
+          "id": "keeps-guideline-link",
+          "type": "contains",
+          "value": "docs/webhooks.md#retries"
+        },
+        {
+          "id": "keeps-must",
+          "type": "regex",
+          "pattern": "\\bMUST\\b"
+        },
+        {
+          "id": "keeps-jitter-fix",
+          "type": "contains",
+          "value": "random.uniform"
+        },
+        {
+          "id": "keeps-4xx-line",
+          "type": "regex",
+          "pattern": "\\b56\\b"
+        },
+        {
+          "id": "keeps-retryable-codes",
+          "type": "regex",
+          "pattern": "408[\\s\\S]{0,40}429|429[\\s\\S]{0,40}408"
+        },
+        {
+          "id": "keeps-410",
+          "type": "contains",
+          "value": "410"
+        },
+        {
+          "id": "keeps-test-file",
+          "type": "contains",
+          "value": "test_retry.py"
+        },
+        {
+          "id": "keeps-retry-after",
+          "type": "contains",
+          "value": "Retry-After"
+        },
+        {
+          "id": "keeps-last-error",
+          "type": "contains",
+          "value": "last_error"
+        },
+        {
+          "id": "keeps-settings-key",
+          "type": "contains",
+          "value": "WEBHOOK_MAX_ATTEMPTS"
+        },
+        {
+          "id": "keeps-blocking-level",
+          "type": "regex",
+          "pattern": "\\b(required|blocking|blocker|must[- ]fix|before merg)",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-optional-level",
+          "type": "regex",
+          "pattern": "\\b(suggestion|optional|non-blocking|not blocking|follow-up)\\b",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-nit-level",
+          "type": "regex",
+          "pattern": "\\bnit(pick)?\\b",
+          "flags": "i"
+        },
+        {
+          "id": "at-most-60pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.6
         }
       ]
     }
