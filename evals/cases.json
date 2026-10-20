@@ -90,6 +90,11 @@
           "id": "at-most-60pct-of-input-words",
           "type": "max_word_ratio",
           "value": 0.6
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     },
@@ -172,6 +177,11 @@
           "id": "at-most-180pct-of-input-words",
           "type": "max_word_ratio",
           "value": 1.8
+        },
+        {
+          "id": "paragraphs-within-5-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 5
         }
       ]
     },
@@ -312,6 +322,11 @@
           "id": "at-most-120pct-of-input-words",
           "type": "max_word_ratio",
           "value": 1.2
+        },
+        {
+          "id": "paragraphs-within-5-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 5
         }
       ]
     },
@@ -407,6 +422,11 @@
           "id": "at-most-100pct-of-input-words",
           "type": "max_word_ratio",
           "value": 1.0
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     },
@@ -563,6 +583,11 @@
           "id": "at-most-90pct-of-input-words",
           "type": "max_word_ratio",
           "value": 0.9
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     },
@@ -655,6 +680,11 @@
           "id": "at-most-160pct-of-input-words",
           "type": "max_word_ratio",
           "value": 1.6
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     },
@@ -753,6 +783,11 @@
           "id": "at-most-60pct-of-input-words",
           "type": "max_word_ratio",
           "value": 0.6
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     }

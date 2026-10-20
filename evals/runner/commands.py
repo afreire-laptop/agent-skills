@@ -31,7 +31,9 @@ from .prompts import (
     split_frontmatter,
 )
 from .report import report
-from .selftest import reference_line, selftest_gates, selftest_judge_schema, selftest_partial_judgement
+from .selftest import (
+    reference_line, selftest_gates, selftest_judge_schema, selftest_paragraphs, selftest_partial_judgement,
+)
 
 
 def generation_meta(harness: str, case: str, condition: str, trial: int, prompt: str,
@@ -104,6 +106,7 @@ def cmd_selftest(_args: argparse.Namespace) -> int:
                                   input_word_count(files))
         print(line)
         errors += not ok
+    errors += selftest_paragraphs()
     errors += selftest_gates()
     errors += selftest_partial_judgement(load_cases()[0].name, len(load_triggers()))
     errors += selftest_judge_schema()

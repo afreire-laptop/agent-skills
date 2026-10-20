@@ -51,7 +51,12 @@ class RatioCheck(CheckBase):
     value: float
 
 
-Check = Annotated[PhraseCheck | PatternCheck | RatioCheck, Field(discriminator="type")]
+class ParagraphCheck(CheckBase):
+    type: Literal["max_paragraph_sentences"]
+    value: int
+
+
+Check = Annotated[PhraseCheck | PatternCheck | RatioCheck | ParagraphCheck, Field(discriminator="type")]
 
 
 class Case(Model):
