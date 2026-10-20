@@ -90,6 +90,11 @@
           "id": "at-most-60pct-of-input-words",
           "type": "max_word_ratio",
           "value": 0.6
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     },
@@ -172,6 +177,11 @@
           "id": "at-most-180pct-of-input-words",
           "type": "max_word_ratio",
           "value": 1.8
+        },
+        {
+          "id": "paragraphs-within-5-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 5
         }
       ]
     },
@@ -312,6 +322,11 @@
           "id": "at-most-120pct-of-input-words",
           "type": "max_word_ratio",
           "value": 1.2
+        },
+        {
+          "id": "paragraphs-within-5-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 5
         }
       ]
     },
@@ -407,6 +422,11 @@
           "id": "at-most-100pct-of-input-words",
           "type": "max_word_ratio",
           "value": 1.0
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     },
@@ -424,6 +444,7 @@
         "Marks the breaking change with ! before the colon and/or a BREAKING CHANGE: footer.",
         "Says what breaks and how to migrate: rename timeout to timeoutMs and convert seconds to milliseconds; old configs fail validation at startup.",
         "References issue #317.",
+        "Keeps the body short: no walk-through of what the diff shows, and no paragraph or footer longer than three lines.",
         "Contains only the commit message, or the message in a single code block, with no extra commentary mixed into it."
       ],
       "checks": [
@@ -470,6 +491,13 @@
           "type": "contains",
           "target": "message",
           "value": "#317"
+        },
+        {
+          "id": "paragraphs-within-3-lines",
+          "type": "not_regex",
+          "target": "message",
+          "pattern": "^(?![-*] )\\S[^\\n]*(\\n(?![-*] |[A-Z][A-Za-z-]*: )\\S[^\\n]*){3}",
+          "flags": "m"
         },
         {
           "id": "at-most-50pct-of-input-words",
@@ -555,6 +583,11 @@
           "id": "at-most-90pct-of-input-words",
           "type": "max_word_ratio",
           "value": 0.9
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     },
@@ -647,6 +680,11 @@
           "id": "at-most-160pct-of-input-words",
           "type": "max_word_ratio",
           "value": 1.6
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     },
@@ -745,6 +783,87 @@
           "id": "at-most-60pct-of-input-words",
           "type": "max_word_ratio",
           "value": 0.6
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "bug-issue",
+      "artifact": "bug report issue",
+      "prompt": "Write the GitHub issue for the tilecache repo from my notes.",
+      "files": [
+        "evals/fixtures/09-bug-notes.md"
+      ],
+      "expected_output": "A bug report whose title names the problem, then expected and actual behaviour, the version and environment, and the reproduction steps, with the cause and workaround, without the incident and the debugging history.",
+      "expectations": [
+        "The title names the bug: prune deletes recent tiles when the local timezone is ahead of UTC, or equivalent.",
+        "States actual against expected behaviour: with TZ=Asia/Tokyo, prune --older-than 6h deletes every tile, including tiles just written, where it should keep tiles newer than 6 hours.",
+        "Gives the version and environment (tilecache 2.4.1, Python 3.11.6, Ubuntu 22.04), notes that 2.3.0 is not affected, and keeps the bisected commit 9f3e2a1.",
+        "Keeps the reproduction commands exactly as given; in an issue they are content, not investigation history.",
+        "Keeps the cause at tilecache/prune.py:88, the likely fix datetime.now(timezone.utc), and the TZ=UTC workaround.",
+        "Leaves out the internal incident details (host name, latency figures, the Osaka cluster), the cron and disk-space dead ends, and the full log. A one-line statement of impact is fine.",
+        "Adds no versions, commands, causes, or claims that are not in the notes."
+      ],
+      "checks": [
+        {
+          "id": "keeps-version",
+          "type": "contains",
+          "value": "2.4.1"
+        },
+        {
+          "id": "keeps-good-version",
+          "type": "contains",
+          "value": "2.3.0"
+        },
+        {
+          "id": "keeps-timezone",
+          "type": "contains",
+          "value": "Asia/Tokyo"
+        },
+        {
+          "id": "keeps-seed-command",
+          "type": "contains",
+          "value": "tilecache seed --zoom 3 ./cache"
+        },
+        {
+          "id": "keeps-prune-command",
+          "type": "contains",
+          "value": "prune --older-than 6h"
+        },
+        {
+          "id": "keeps-cause-line",
+          "type": "regex",
+          "pattern": "prune\\.py:88|prune\\.py[\\s\\S]{0,60}\\b88\\b|\\bline 88\\b"
+        },
+        {
+          "id": "keeps-bisect-commit",
+          "type": "contains",
+          "value": "9f3e2a1"
+        },
+        {
+          "id": "keeps-workaround",
+          "type": "contains",
+          "value": "TZ=UTC"
+        },
+        {
+          "id": "no-internal-host",
+          "type": "not_contains",
+          "value": "tiles-prod-03"
+        },
+        {
+          "id": "at-most-70pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.7
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
         }
       ]
     }
