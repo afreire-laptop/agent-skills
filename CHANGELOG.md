@@ -2,6 +2,13 @@
 
 All notable changes to this skill are recorded here, and versions follow the skill's [versioning policy](README.md#versioning). From 0.2.0 on, [release-please](https://github.com/googleapis/release-please) writes each entry from the commits since the previous release, and its open release pull request shows what is not yet released. Changes to the evals, docs, and CI are not listed; the commit history has them. The 0.1.0 entry follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0](https://github.com/afreire-laptop/technical-writing/compare/v0.2.0...v0.3.0) (2026-10-20)
+
+
+### Features
+
+* **skill:** size paragraphs to the artifact and add issue guidance ([#6](https://github.com/afreire-laptop/technical-writing/issues/6)) ([b0c6f70](https://github.com/afreire-laptop/technical-writing/commit/b0c6f705b5da83f9e44a90aeaa7d4e6ae0ae76ca))
+
 ## [0.2.0](https://github.com/afreire-laptop/technical-writing/compare/v0.1.0...v0.2.0) (2026-10-16)
 
 
