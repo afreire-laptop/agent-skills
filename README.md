@@ -78,6 +78,7 @@ The rules restate these sources; nothing is copied.
 - It works from the material the agent has. It cannot supply missing facts or verify claims beyond the source.
 - Its guidance is tuned for English. It follows the language of the request, but its examples of formulaic prose are English.
 - Its benefit over a short writing rule is measured for Claude Code only.
+- It has guidance for issues, but its description doesn't name them, so it may not load for an issue on its own; invoke it explicitly.
 - The eval suite is small (nine cases) and its judges are models; see [`evals/README.md`](evals/README.md#limitations).
 
 ## Evaluation
