@@ -10,6 +10,7 @@ The agent keeps every technical fact from the source (identifiers, numbers, comm
 
 - Starts from the reader: who they are, what they need to do or decide, and what they already know.
 - Keeps documents brief by default: the facts the reader needs to act or decide stay, and evidence, investigation history, and background go behind a link. The user can ask for them in an appendix.
+- Keeps one idea per paragraph, sized to where the artifact is read: three lines in a commit message, five sentences in an RFC, spec, or ADR, and three sentences elsewhere.
 - Follows the repository's conventions first: PR templates, commit history, commitlint config, ADR folders, the CHANGELOG format, and neighbouring docs.
 - Writes only what the source supports. Missing facts go in a short note to the user, or into the document as marked gaps when it is a draft under review. The agent's own analysis never appears as the author's.
 - Replaces secrets, credentials, and personal data with placeholders.
@@ -57,7 +58,8 @@ The agent loads the skill when a task matches its description, such as "write th
 - The rules come from running the cases without the skill first. Baseline models already kept facts well. They failed on long commentary after the document, bold and emoji, and their own analysis written as the author's. Early drafts of the skill added empty sections and TODO stubs, so section checklists became reader priorities.
 - The fact rules have an order: secrets and personal data first, then the facts this reader needs, then writing only what the source supports, then the author's voice. "Keep every fact" alone conflicts with relevance edits and with removing sensitive material.
 - The bar is the short rule, not no guidance. If the skill stops beating the rule, the rule should replace it.
-- Conventional Commits rules apply only where a repository uses them. Line lengths, mood, and subject case follow the repository's history; body length doesn't. A body says why in paragraphs and footers of at most three lines, with one-line bullets for separate changes: the diff shows how, and the PR holds the testing.
+- Conventional Commits rules apply only where a repository uses them. Line lengths, mood, and subject case follow the repository's history; body length doesn't. A body says why in one paragraph, with one-line bullets for separate changes: the diff shows how, and the PR holds the testing.
+- Paragraph limits follow where a document is read. A commit is read in a 72-column terminal, so it gets three lines; an RFC, spec, or ADR carries trade-offs, so it gets five sentences; anything else gets three.
 
 ## Sources
 
