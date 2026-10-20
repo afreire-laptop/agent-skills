@@ -100,7 +100,7 @@ skills/technical-writing/agents/openai.yaml  Codex display name and short descri
 evals/                                       cases, fixtures, references, runner, results
 CHANGELOG.md                                 release history
 release-please-config.json                   release pull request and changelog settings
-.github/workflows/ci.yml                     lint, selftest, type check, and commit messages on every push and pull request
+.github/workflows/ci.yml                     lint, selftest, type check, and commit messages on every push and pull request; release evidence on pull requests
 .github/workflows/release.yml                release pull requests and tags
 ```
 
@@ -123,9 +123,9 @@ To release:
 
 1. Merge changes to `main`. release-please keeps a pull request titled `chore(release): vX.Y.Z` open, with the next version and its `CHANGELOG.md` entry.
 2. For a minor or major release, before merging that pull request, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`. Commit the report and the calibration result to `main` as `evals/results/vX.Y.Z.md`, with the calibration under `## Judge spot-check`. A patch release runs only the cases its change affects.
-3. Merge the release pull request. The release workflow checks for the results file and tags `vX.Y.Z`.
+3. Merge the release pull request once its `release-evidence` check passes. The check fails until the results file is on `main` and release-please has rebuilt the pull request on top of it. The release workflow checks again and tags `vX.Y.Z`.
 
-If a minor or major release pull request is merged without the results file, nothing is tagged and the release workflow fails on every push. To recover, change the merged pull request's label from `autorelease: pending` to `autorelease: tagged`, commit the results file, and run `gh release create vX.Y.Z --target <commit-with-results>`.
+If a minor or major release pull request is merged without the results file, nothing is tagged and the release workflow fails on every push. To recover, change the merged pull request's label from `autorelease: pending` to `autorelease: tagged`, commit the results file, and run `gh release create vX.Y.Z --target <commit-with-results>`. Then rerun the release workflow run that the results commit started: it began before the tag existed, so it failed.
 
 ## License
 

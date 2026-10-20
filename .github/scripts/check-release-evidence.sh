@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Refuses to let release-please tag a minor or major release whose evidence is not in the
-# release commit: evals/results/vX.Y.Z.md with the full eval report and a
-# "## Judge spot-check" section holding the human calibration result (README.md, "Versioning").
-# Patch releases and pushes with no release pending pass.
+# Refuses a minor or major release whose evidence is not in the release commit:
+# evals/results/vX.Y.Z.md with the full eval report and a "## Judge spot-check" section holding
+# the human calibration result (README.md, "Versioning"). The release workflow runs it before
+# release-please tags; CI runs it on each pull request, where the release pull request's head is
+# the release commit. Patch releases and anything with no release pending pass.
 set -euo pipefail
 
 manifest=.release-please-manifest.json
@@ -24,8 +25,13 @@ fi
 # The commit release-please tags: the one that moved the manifest to this version on main.
 release_commit=$(git log -1 --first-parent --format=%H -- "$manifest")
 evidence=evals/results/v$version.md
+if [[ ${GITHUB_EVENT_NAME:-} == pull_request ]]; then
+  next="Don't merge yet: commit the results to main first, as README.md, \"Versioning\", step 2 says."
+else
+  next="Nothing was tagged. README.md, \"Versioning\", says how to recover."
+fi
 if ! git cat-file -e "$release_commit:$evidence" 2>/dev/null; then
-  echo "::error::Release $version needs $evidence in its release commit ${release_commit:0:7}, so nothing was tagged. README.md, \"Versioning\", says how to recover."
+  echo "::error::Release $version needs $evidence in its release commit ${release_commit:0:7}. $next"
   exit 1
 fi
 if ! git show "$release_commit:$evidence" | grep -q '^## Judge spot-check'; then
