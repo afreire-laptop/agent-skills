@@ -47,3 +47,17 @@ jobs:
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           TITLE: ${{ github.event.pull_request.title }}
         run: .github/scripts/check-commits.sh "$BASE_SHA" "$HEAD_SHA" "$TITLE"
+
+  release-evidence:
+    # A minor or major release pull request fails until its eval results are on main and
+    # release-please has rebuilt the pull request on top of them. Other pull requests pass.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require eval evidence for a minor or major release
+        run: .github/scripts/check-release-evidence.sh
