@@ -122,10 +122,12 @@ Git tags and [`CHANGELOG.md`](CHANGELOG.md) record versions. The frontmatter has
 To release:
 
 1. Merge changes to `main`. release-please keeps a pull request titled `chore(release): vX.Y.Z` open, with the next version and its `CHANGELOG.md` entry.
-2. For a minor or major release, before merging that pull request, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`. Commit the report and the calibration result to `main` as `evals/results/vX.Y.Z.md`, with the calibration under `## Judge spot-check`. A patch release runs only the cases its change affects.
+2. For a minor or major release, before merging that pull request, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`. Merge the report and the calibration result into `main` through a pull request, as `evals/results/vX.Y.Z.md` with the calibration under `## Judge spot-check`. A patch release runs only the cases its change affects.
 3. Merge the release pull request once its `release-evidence` check passes. The check fails until the results file is on `main` and release-please has rebuilt the pull request on top of it. The release workflow checks again and tags `vX.Y.Z`.
 
-If a minor or major release pull request is merged without the results file, nothing is tagged and the release workflow fails on every push. To recover, change the merged pull request's label from `autorelease: pending` to `autorelease: tagged`, commit the results file, and run `gh release create vX.Y.Z --target <commit-with-results>`. Then rerun the release workflow run that the results commit started: it began before the tag existed, so it failed.
+The `release-evidence` ruleset requires that check on `main` with no bypass, so every change, results included, reaches `main` through a pull request. If GitHub Actions is down, an admin can disable the ruleset in the repository settings.
+
+If a minor or major release pull request is merged without the results file, nothing is tagged and the release workflow fails on every push. To recover, change the merged pull request's label from `autorelease: pending` to `autorelease: tagged`, merge the results file through a pull request, and run `gh release create vX.Y.Z --target <commit-with-results>`. Then rerun the release workflow run that the results commit started: it began before the tag existed, so it failed.
 
 ## License
 
