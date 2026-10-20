@@ -424,6 +424,7 @@
         "Marks the breaking change with ! before the colon and/or a BREAKING CHANGE: footer.",
         "Says what breaks and how to migrate: rename timeout to timeoutMs and convert seconds to milliseconds; old configs fail validation at startup.",
         "References issue #317.",
+        "Keeps the body short: no walk-through of what the diff shows, and no paragraph or footer longer than three lines.",
         "Contains only the commit message, or the message in a single code block, with no extra commentary mixed into it."
       ],
       "checks": [
@@ -470,6 +471,13 @@
           "type": "contains",
           "target": "message",
           "value": "#317"
+        },
+        {
+          "id": "paragraphs-within-3-lines",
+          "type": "not_regex",
+          "target": "message",
+          "pattern": "^(?![-*] )\\S[^\\n]*(\\n(?![-*] |[A-Z][A-Za-z-]*: )\\S[^\\n]*){3}",
+          "flags": "m"
         },
         {
           "id": "at-most-50pct-of-input-words",
