@@ -26,13 +26,15 @@ def reference_line(case: Case, reference: str, raw: str, input_words: int) -> tu
 
 
 def selftest_paragraphs() -> int:
-    """The paragraph check counts sentences in prose only, and only at real sentence ends."""
+    """The paragraph check counts sentences in prose only, and only at real sentence ends. A document
+    fenced as markdown is prose; code inside it is not."""
     text = ("# Retries\n\nRetries back off (see `next_delay()`). The cap is 1.5 s, e.g. 3 retries.\n"
             "A 410 means \"gone.\" Stop.\n\n- One. Two. Three. Four.\n  Five.\n\n"
-            "```\nOne. Two. Three. Four.\n```\n\n| a. | B. |\n\nLast one.")
+            "```\nOne. Two. Three. Four.\n```\n\n| a. | B. |\n\nLast one.\n\n"
+            "````markdown\nOne. Two.\n\n```sh\nOne. Two. Three.\n```\n````")
     counts = [sentence_count(p) for p in prose_paragraphs(text)]
-    ok = counts == [4, 1]
-    print(f"{'ok  ' if ok else 'FAIL'} paragraph sentence counts: {counts}, expected [4, 1]")
+    ok = counts == [4, 1, 2]
+    print(f"{'ok  ' if ok else 'FAIL'} paragraph sentence counts: {counts}, expected [4, 1, 2]")
     return not ok
 
 

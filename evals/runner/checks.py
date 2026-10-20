@@ -33,14 +33,27 @@ def first_line(text: str) -> str:
 NOT_PROSE = re.compile(r"\s*([-*+]\s|\d+[.)]\s|#|\||>)|\s{2,}\S")
 # A sentence ends at ., ! or ?, after any closing bracket or quote, before a capital or opening mark.
 SENTENCE_END = re.compile(r"[.!?][)\"'`]*(?=\s+[A-Z(`\"*])")
+# A code fence line: its marker and info string.
+FENCE = re.compile(r"\s*(`{3,}|~{3,})\s*(\S*)")
 
 
 def prose_paragraphs(text: str) -> list[str]:
-    """Runs of consecutive prose lines outside fenced code blocks."""
+    """Runs of consecutive prose lines outside code blocks. A block fenced as `markdown` or `md` holds
+    the document itself, so its lines count as prose."""
     paragraphs: list[str] = []
     run: list[str] = []
-    for line in re.sub(r"```.*?```", "", text, flags=re.S).splitlines():
-        if line.strip() and not NOT_PROSE.match(line):
+    fences: list[tuple[str, bool]] = []  # open fences, innermost last: (marker, holds code)
+    for line in text.splitlines():
+        fence = FENCE.match(line)
+        if fence:
+            marker, info = fence.groups()
+            top = fences[-1][0] if fences else ""
+            if top and not info and marker[0] == top[0] and len(marker) >= len(top):
+                fences.pop()
+            else:
+                fences.append((marker, info.lower() not in ("markdown", "md")))
+        prose = not fence and not any(code for _, code in fences) and not NOT_PROSE.match(line)
+        if prose and line.strip():
             run.append(line.strip())
         elif run:
             paragraphs.append(" ".join(run))
