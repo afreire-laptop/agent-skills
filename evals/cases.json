@@ -1182,6 +1182,127 @@
           "value": 5
         }
       ]
+    },
+    {
+      "id": 12,
+      "name": "runbook-compression",
+      "artifact": "runbook",
+      "prompt": "On-call says this failover runbook is too long to follow during an incident. Rewrite it.",
+      "files": [
+        "evals/fixtures/12-long-runbook.md"
+      ],
+      "expected_output": "A runbook that keeps when to use it, the prerequisites, the write pause, every command in order with the lag threshold and the fencing warning, verification, and what to do before and after promotion, and drops the history, the replication background, and the FAQ.",
+      "expectations": [
+        "Before step 1, states when to use the runbook (the primary unreachable for more than 5 minutes, or the incident commander decides; not for a slow primary or a short blip), the prerequisites (VPN and the ops-admin role, the incident commander's go-ahead, a post in #incidents), and that writes pause for about 4 minutes.",
+        "Gives numbered steps in the source's order, with every command exactly as given: maintenance on, the replication-lag query, fence us-east, promote eu-west, set DB_HOST and watch the rollout, maintenance off.",
+        "Keeps the lag rule: under 30 seconds carry on; at 30 seconds or more stop and let the incident commander decide; record the lag in the incident timeline either way.",
+        "Keeps the warnings an operator must not miss: fence the old primary even if it looks dead, or risk split brain; promotion is one-way.",
+        "Keeps verification (healthz returns {\"db\":\"ok\",\"region\":\"eu-west\"}; the Orders / Writes dashboard back to normal within 5 minutes) and recovery (before promotion, maintenance off; after it, no rollback, and fail back later with docs/runbooks/orders-failback.md in a planned window).",
+        "Leaves out the history of failover.sh and INC-1902, the background on replication beyond what the warnings need, and the FAQ.",
+        "Invents no commands, hosts, thresholds, or steps."
+      ],
+      "checks": [
+        {
+          "id": "keeps-maintenance-on",
+          "type": "contains",
+          "value": "opsctl orders maintenance on"
+        },
+        {
+          "id": "keeps-lag-query",
+          "type": "contains",
+          "value": "pg_last_xact_replay_timestamp()"
+        },
+        {
+          "id": "keeps-fence",
+          "type": "contains",
+          "value": "opsctl orders db fence --region us-east"
+        },
+        {
+          "id": "keeps-promote",
+          "type": "contains",
+          "value": "opsctl orders db promote --region eu-west"
+        },
+        {
+          "id": "keeps-repoint",
+          "type": "contains",
+          "value": "kubectl -n orders set env deploy/orders-api DB_HOST=orders-db.eu-west.internal"
+        },
+        {
+          "id": "keeps-rollout-watch",
+          "type": "contains",
+          "value": "kubectl -n orders rollout status deploy/orders-api"
+        },
+        {
+          "id": "keeps-maintenance-off",
+          "type": "contains",
+          "value": "opsctl orders maintenance off"
+        },
+        {
+          "id": "keeps-safe-order",
+          "type": "regex",
+          "pattern": "maintenance on[\\s\\S]*pg_last_xact_replay_timestamp[\\s\\S]*db fence[\\s\\S]*db promote[\\s\\S]*set env[\\s\\S]*maintenance off"
+        },
+        {
+          "id": "keeps-lag-threshold",
+          "type": "regex",
+          "pattern": "30\\s?(s\\b|sec)",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-trigger-condition",
+          "type": "regex",
+          "pattern": "unreachable[\\s\\S]{0,60}5 min|5 min[\\s\\S]{0,60}unreachable",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-write-pause",
+          "type": "regex",
+          "pattern": "4 min"
+        },
+        {
+          "id": "keeps-split-brain",
+          "type": "regex",
+          "pattern": "split[- ]brain",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-incident-commander",
+          "type": "regex",
+          "pattern": "incident commander",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-healthz",
+          "type": "contains",
+          "value": "https://orders.internal/healthz"
+        },
+        {
+          "id": "keeps-failback-link",
+          "type": "contains",
+          "value": "docs/runbooks/orders-failback.md"
+        },
+        {
+          "id": "drops-history",
+          "type": "not_regex",
+          "pattern": "INC-1902|failover\\.sh|47 minutes"
+        },
+        {
+          "id": "drops-faq",
+          "type": "not_regex",
+          "pattern": "^#+\\s*(faq|frequently asked)|isn't failover automatic|ap-south",
+          "flags": "im"
+        },
+        {
+          "id": "at-most-70pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.7
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
+        }
+      ]
     }
   ]
 }
