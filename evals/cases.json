@@ -866,6 +866,155 @@
           "value": 3
         }
       ]
+    },
+    {
+      "id": 10,
+      "name": "complex-pr-compression",
+      "artifact": "pull request description",
+      "prompt": "Get my PR description ready for review.",
+      "files": [
+        "evals/fixtures/10-long-pr.md"
+      ],
+      "expected_output": "A reviewer-oriented description of about 250 to 400 words with what the change does and why, its contributor, compatibility, and security impact, the test results and gaps, the limitations, and the ADR decision, leaving the commit walkthrough, the ADR's history, test minutiae, and the follow-up backlog to the commits, the ADR, the test docs, and the issues.",
+      "expectations": [
+        "Leads with what the change does and why: a remote cache for kb build that CI on main writes and other builds read, because CI builds take 14 minutes at p50. Keeps the closing reference to #318.",
+        "States the impact on contributors and compatibility: the Node floor goes from >=20 to >=22.12 and pnpm install fails on older versions; without a token nothing changes, and kb cache login turns the cache on, with a first download of up to 2.3 GB; @kestrel/build-config gets a minor release; cache-check is not a required check.",
+        "States the security boundary: only CI on main can write (the write token exists only in the cache-write environment, and the bucket policy lets only the cache server write), pull requests and contributors read with read-only tokens, forks get no token, and the signature check is defence in depth rather than the boundary.",
+        "Reports testing accurately and briefly: the tests passed, the shadow trial's result (81% hit rate, no artifact differing from a local build), the tampering and token-scope results, and exactly what was not tested: Windows, the Linux ARM64 runners, a cache server failover, and a full build on Node 22.",
+        "Keeps the limitations that matter: a build that reads an environment variable not listed in kb.json can get a stale artifact, and builds fall back to building locally when the cache server is unreachable.",
+        "Asks reviewers to accept or reject ADR-0012 and leaves fork access (#331) and making cache-check required (#332) as open questions.",
+        "Leaves out, or points to, what other artifacts hold: the commit-by-commit walkthrough, the client's retry and chunk settings, the ADR's history and rejected alternatives, the test environment details and the trial's cost, and the follow-up backlog. States each fact once.",
+        "Adds no facts, results, or decisions that are not in the draft."
+      ],
+      "checks": [
+        {
+          "id": "closes-issue",
+          "type": "regex",
+          "pattern": "(closes|fixes|resolves)\\s+#318",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-node-floor",
+          "type": "contains",
+          "value": "22.12"
+        },
+        {
+          "id": "keeps-package-release",
+          "type": "contains",
+          "value": "@kestrel/build-config"
+        },
+        {
+          "id": "keeps-not-required",
+          "type": "regex",
+          "pattern": "not (a )?required|isn't (a )?required|non-required",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-write-boundary",
+          "type": "contains",
+          "value": "cache-write"
+        },
+        {
+          "id": "keeps-read-only",
+          "type": "regex",
+          "pattern": "read-only",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-fork-policy",
+          "type": "regex",
+          "pattern": "fork",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-signature-check",
+          "type": "regex",
+          "pattern": "signature|signed|Ed25519",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-untested-windows",
+          "type": "regex",
+          "pattern": "windows",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-untested-arm",
+          "type": "regex",
+          "pattern": "ARM"
+        },
+        {
+          "id": "keeps-untested-failover",
+          "type": "regex",
+          "pattern": "fail-?over",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-env-limitation",
+          "type": "contains",
+          "value": "kb.json"
+        },
+        {
+          "id": "keeps-local-fallback",
+          "type": "regex",
+          "pattern": "fall(s|ing)? back|build(s|ing)? locally",
+          "flags": "i"
+        },
+        {
+          "id": "asks-adr-decision",
+          "type": "regex",
+          "pattern": "ADR-0012[\\s\\S]{0,300}\\b(accept|reject|approv)|\\b(accept|reject|approv)[\\s\\S]{0,300}ADR-0012",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-docs-link",
+          "type": "contains",
+          "value": "docs/build-cache/"
+        },
+        {
+          "id": "no-invented-coverage",
+          "type": "not_regex",
+          "pattern": "\\d+\\s?%\\s+coverage|coverage[^\\n.]{0,20}\\d+\\s?%",
+          "flags": "i"
+        },
+        {
+          "id": "drops-client-internals",
+          "type": "not_regex",
+          "pattern": "250\\s?ms|8\\s?MB"
+        },
+        {
+          "id": "drops-adr-history",
+          "type": "not_regex",
+          "pattern": "34\\s?%|vendor-hosted|data[- ]residency",
+          "flags": "i"
+        },
+        {
+          "id": "drops-trial-cost",
+          "type": "not_contains",
+          "value": "18.40"
+        },
+        {
+          "id": "drops-follow-up-backlog",
+          "type": "not_regex",
+          "pattern": "Grafana|warm-cache|@kestrel/charts"
+        },
+        {
+          "id": "states-node-floor-once",
+          "type": "max_mentions",
+          "pattern": "22\\.12",
+          "value": 1
+        },
+        {
+          "id": "at-most-60pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.6
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
+        }
+      ]
     }
   ]
 }
