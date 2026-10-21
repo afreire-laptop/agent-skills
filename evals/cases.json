@@ -871,7 +871,7 @@
       "id": 10,
       "name": "complex-pr-compression",
       "artifact": "pull request description",
-      "prompt": "Get my PR description ready for review.",
+      "prompt": "Reviewers say this PR description is too long to get through. Rewrite it for them.",
       "files": [
         "evals/fixtures/10-long-pr.md"
       ],
