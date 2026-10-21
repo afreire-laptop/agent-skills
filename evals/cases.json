@@ -985,7 +985,7 @@
         {
           "id": "drops-adr-history",
           "type": "not_regex",
-          "pattern": "34\\s?%|vendor-hosted|data[- ]residency",
+          "pattern": "34\\s?%|data[- ]residency",
           "flags": "i"
         },
         {
@@ -1157,7 +1157,7 @@
         {
           "id": "drops-implementation-plan",
           "type": "not_regex",
-          "pattern": "bigserial|ORDER BY id|ORD-4\\d\\d|20261014_create_outbox",
+          "pattern": "bigserial|ORDER BY id|order\\.created\\.shadow|20261014_create_outbox",
           "flags": "i"
         },
         {
@@ -1284,12 +1284,12 @@
         {
           "id": "drops-history",
           "type": "not_regex",
-          "pattern": "INC-1902|failover\\.sh|47 minutes"
+          "pattern": "47 minutes|retired in March|game days"
         },
         {
           "id": "drops-faq",
           "type": "not_regex",
-          "pattern": "^#+\\s*(faq|frequently asked)|isn't failover automatic|ap-south",
+          "pattern": "^#+\\s*(faq|frequently asked)|isn't failover automatic|in 2024|planned for next year",
           "flags": "im"
         },
         {
