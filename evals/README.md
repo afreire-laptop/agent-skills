@@ -111,5 +111,6 @@ If gates 1 and 2 pass but gate 3 fails, the short rule does the job, and the rec
 
 - Thirteen cases are enough to catch large effects, not small ones. Treat differences of a few points as noise, and read the bootstrap interval before the point estimate.
 - The fixtures were written by the same author as the skill, and the skill was revised while looking at results on them. There is no held-out set yet. Guard against fitting: nothing in `SKILL.md` may refer to a specific fixture, and the next cases should come from real documents written by other people.
+- Repetition across sections is caught only for the facts a case names in a `max_mentions` check, and otherwise by the judges' brevity ranking. Nothing finds every restated fact.
 - Model judges share biases with model writers. Cross-family judging and human calibration reduce this but do not remove it.
 - Condition C injects the skill body into the prompt instead of loading it through each harness's skill mechanism. The trigger evals cover loading; the combination is checked by hand during release.
