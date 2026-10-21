@@ -32,7 +32,8 @@ from .prompts import (
 )
 from .report import report
 from .selftest import (
-    reference_line, selftest_gates, selftest_judge_schema, selftest_paragraphs, selftest_partial_judgement,
+    reference_line, selftest_gates, selftest_judge_schema, selftest_mentions, selftest_paragraphs,
+    selftest_partial_judgement,
 )
 
 
@@ -107,6 +108,7 @@ def cmd_selftest(_args: argparse.Namespace) -> int:
         print(line)
         errors += not ok
     errors += selftest_paragraphs()
+    errors += selftest_mentions()
     errors += selftest_gates()
     errors += selftest_partial_judgement(load_cases()[0].name, len(load_triggers()))
     errors += selftest_judge_schema()

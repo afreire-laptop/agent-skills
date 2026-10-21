@@ -10,8 +10,8 @@ from pydantic import ValidationError
 from .checks import prose_paragraphs, run_check, sentence_count
 from .gates import gates, missing_results
 from .models import (
-    DIMENSIONS, HARNESSES, Case, ConditionStats, GroupCounts, HarnessStats, JudgeResult, PairStats, ReportParams,
-    TriggerStats, first_error,
+    DIMENSIONS, HARNESSES, Case, ConditionStats, GroupCounts, HarnessStats, JudgeResult, MentionCheck, PairStats,
+    ReportParams, TriggerStats, first_error,
 )
 from .prompts import judge_schema
 
@@ -35,6 +35,17 @@ def selftest_paragraphs() -> int:
     counts = [sentence_count(p) for p in prose_paragraphs(text)]
     ok = counts == [4, 1, 2]
     print(f"{'ok  ' if ok else 'FAIL'} paragraph sentence counts: {counts}, expected [4, 1, 2]")
+    return not ok
+
+
+def selftest_mentions() -> int:
+    """The mention check counts a fact across sections, lists, and tables, but not where it is quoted."""
+    text = ("Requires Node 20.12.\n\n## Risks\n\n- Node below 20.12 fails.\n\n| Node | 20.12 |\n\n"
+            'The note calls it "Node 20.12".')
+    check = MentionCheck(id="node", type="max_mentions", pattern=r"20\.12", value=2, ignore_quoted=True)
+    outcome = run_check(check, text, 1)
+    ok = outcome == (False, "3 mentions")
+    print(f"{'ok  ' if ok else 'FAIL'} mention count: {outcome[1]}, expected 3 mentions")
     return not ok
 
 

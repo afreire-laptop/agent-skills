@@ -56,7 +56,16 @@ class ParagraphCheck(CheckBase):
     value: int
 
 
-Check = Annotated[PhraseCheck | PatternCheck | RatioCheck | ParagraphCheck, Field(discriminator="type")]
+class MentionCheck(CheckBase):
+    """A fact the output may state at most `value` times, however many sections it spans."""
+
+    type: Literal["max_mentions"]
+    pattern: str
+    value: int
+
+
+Check = Annotated[PhraseCheck | PatternCheck | RatioCheck | ParagraphCheck | MentionCheck,
+                  Field(discriminator="type")]
 
 
 class Case(Model):

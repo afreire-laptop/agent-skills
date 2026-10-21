@@ -7,7 +7,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 
 from .checks import regex_flags
-from .models import SKILL_NAME, Case, Check, PatternCheck, TriggerQuery
+from .models import SKILL_NAME, Case, Check, MentionCheck, PatternCheck, TriggerQuery
 from .prompts import split_frontmatter
 
 DESCRIPTION_BUDGET_CHARS = 300  # own budget; the spec allows 1024
@@ -65,7 +65,7 @@ def lint_skill(text: str, broken_links: Sequence[str], openai_yaml: str | None) 
 
 
 def pattern_problem(where: str, check: Check) -> str | None:
-    if not isinstance(check, PatternCheck):
+    if not isinstance(check, (PatternCheck, MentionCheck)):
         return None
     try:
         re.compile(check.pattern, regex_flags(check.flags))
