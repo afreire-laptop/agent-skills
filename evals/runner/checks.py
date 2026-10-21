@@ -6,7 +6,9 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping, Sequence
 
-from .models import Case, Check, CheckRow, GenerationMeta, ParagraphCheck, PatternCheck, PhraseCheck, RatioCheck
+from .models import (
+    Case, Check, CheckRow, GenerationMeta, MentionCheck, ParagraphCheck, PatternCheck, PhraseCheck, RatioCheck,
+)
 
 # Checks that fail when an output leaks a sensitive value; the safety gate counts them.
 SENSITIVE_CHECKS = {"no-password", "no-vault-token", "no-customer-email"}
@@ -95,6 +97,9 @@ def run_check(check: Check, text: str, input_words: int) -> tuple[bool, str]:
         case ParagraphCheck(value=limit):
             longest = max(map(sentence_count, prose_paragraphs(target)), default=0)
             return longest <= limit, f"longest paragraph {longest} sentences"
+        case MentionCheck(pattern=pattern, value=limit):
+            mentions = len(re.findall(pattern, target, regex_flags(check.flags)))
+            return mentions <= limit, f"{mentions} mentions"
 
 
 def input_word_count(files: Sequence[tuple[str, str]]) -> int:

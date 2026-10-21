@@ -866,6 +866,597 @@
           "value": 3
         }
       ]
+    },
+    {
+      "id": 10,
+      "name": "complex-pr-compression",
+      "artifact": "pull request description",
+      "prompt": "Reviewers say this PR description is too long to get through. Rewrite it for them.",
+      "files": [
+        "evals/fixtures/10-long-pr.md"
+      ],
+      "expected_output": "A reviewer-oriented description of about 250 to 400 words with what the change does and why, its contributor, compatibility, and security impact, the test results and gaps, the limitations, and the ADR decision, leaving the commit walkthrough, the ADR's history, test minutiae, and the follow-up backlog to the commits, the ADR, the test docs, and the issues.",
+      "expectations": [
+        "Leads with what the change does and why: a remote cache for kb build that CI on main writes and other builds read, because CI builds take 14 minutes at p50. Keeps the closing reference to #318.",
+        "States the impact on contributors and compatibility: the Node floor goes from >=20 to >=22.12 and pnpm install fails on older versions; without a token nothing changes, and kb cache login turns the cache on, with a first download of up to 2.3 GB; @kestrel/build-config gets a minor release; cache-check is not a required check.",
+        "States the security boundary: only CI on main can write (the write token exists only in the cache-write environment, and the bucket policy lets only the cache server write), pull requests and contributors read with read-only tokens, forks get no token, and the signature check is defence in depth rather than the boundary.",
+        "Reports testing accurately and briefly: the tests passed, the shadow trial's result (81% hit rate, no artifact differing from a local build), the tampering and token-scope results, and exactly what was not tested: Windows, the Linux ARM64 runners, a cache server failover, and a full build on Node 22.",
+        "Keeps the limitations that matter: a build that reads an environment variable not listed in kb.json can get a stale artifact, and builds fall back to building locally when the cache server is unreachable.",
+        "Asks reviewers to accept or reject ADR-0012 and leaves fork access (#331) and making cache-check required (#332) as open questions.",
+        "Leaves out, or points to, what other artifacts hold: the commit-by-commit walkthrough, the client's retry and chunk settings, the ADR's history and rejected alternatives, the test environment details and the trial's cost, and the follow-up backlog. States each fact once.",
+        "Adds no facts, results, or decisions that are not in the draft."
+      ],
+      "checks": [
+        {
+          "id": "closes-issue",
+          "type": "regex",
+          "pattern": "(closes|fixes|resolves)\\s+#318",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-node-floor",
+          "type": "contains",
+          "value": "22.12"
+        },
+        {
+          "id": "keeps-package-release",
+          "type": "contains",
+          "value": "@kestrel/build-config"
+        },
+        {
+          "id": "keeps-not-required",
+          "type": "regex",
+          "pattern": "not (a )?required|isn't (a )?required|non-required",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-write-boundary",
+          "type": "contains",
+          "value": "cache-write"
+        },
+        {
+          "id": "keeps-read-only",
+          "type": "regex",
+          "pattern": "read-only",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-fork-policy",
+          "type": "regex",
+          "pattern": "fork",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-signature-check",
+          "type": "regex",
+          "pattern": "signature|signed|Ed25519",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-untested-windows",
+          "type": "regex",
+          "pattern": "windows",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-untested-arm",
+          "type": "regex",
+          "pattern": "ARM"
+        },
+        {
+          "id": "keeps-untested-failover",
+          "type": "regex",
+          "pattern": "fail-?over",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-env-limitation",
+          "type": "contains",
+          "value": "kb.json"
+        },
+        {
+          "id": "keeps-local-fallback",
+          "type": "regex",
+          "pattern": "fall(s|ing)? back|build(s|ing)? locally",
+          "flags": "i"
+        },
+        {
+          "id": "asks-adr-decision",
+          "type": "regex",
+          "pattern": "ADR-0012[\\s\\S]{0,300}\\b(accept|reject|approv)|\\b(accept|reject|approv)[\\s\\S]{0,300}ADR-0012",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-docs-link",
+          "type": "contains",
+          "value": "docs/build-cache/"
+        },
+        {
+          "id": "no-invented-coverage",
+          "type": "not_regex",
+          "pattern": "\\d+\\s?%\\s+coverage|coverage[^\\n.]{0,20}\\d+\\s?%",
+          "flags": "i"
+        },
+        {
+          "id": "drops-client-internals",
+          "type": "not_regex",
+          "pattern": "250\\s?ms|8\\s?MB"
+        },
+        {
+          "id": "drops-adr-history",
+          "type": "not_regex",
+          "pattern": "34\\s?%|data[- ]residency",
+          "flags": "i"
+        },
+        {
+          "id": "drops-trial-cost",
+          "type": "not_contains",
+          "value": "18.40"
+        },
+        {
+          "id": "drops-follow-up-backlog",
+          "type": "not_regex",
+          "pattern": "Grafana|warm-cache|@kestrel/charts"
+        },
+        {
+          "id": "states-node-floor-once",
+          "type": "max_mentions",
+          "pattern": "22\\.12",
+          "value": 1
+        },
+        {
+          "id": "at-most-60pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.6
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "adr-compression",
+      "artifact": "ADR",
+      "prompt": "ADR 0014 has grown long. Tighten it before the architecture review.",
+      "files": [
+        "evals/fixtures/11-long-adr.md"
+      ],
+      "expected_output": "A shorter ADR that keeps the context, the constraints, the decision, every alternative with its reason, every consequence good and bad, the benchmark result, and the open questions, and drops the meeting history, the implementation plan, the raw benchmark output, and the glossary.",
+      "expectations": [
+        "Keeps the ADR's structure and status: Proposed, context, decision, alternatives with the reason each lost, consequences, and open questions.",
+        "The context keeps the dual-write problem and INC-2318's impact (2,140 lost order.created events, orders not shipped), and all three constraints with their requirement keywords: MUST NOT add more than 5 ms to checkout p99, MUST keep per-order ordering, SHOULD NOT need infrastructure no team operates.",
+        "Keeps every alternative with its reason: retries narrow the window but don't close it; Debezium needs Kafka Connect, which no team operates, and publishes row changes rather than domain events; Kafka transactions aren't atomic across Kafka and PostgreSQL.",
+        "Keeps every consequence, the bad ones included: consumers must be idempotent because delivery is at-least-once, and billing and notifications don't deduplicate yet; events wait for the 500 ms poll; the table grows by about 180,000 rows a day and needs cleanup; the relay needs an alert on the age of the oldest unsent row.",
+        "Keeps the benchmark's conclusion: the outbox added 1.7 ms to checkout p99 (18.2 to 19.9 ms), within the 5 ms budget.",
+        "Keeps both open questions: how long to keep sent rows (7 days planned, the audit team asking about 90), and whether payments shares the outbox table.",
+        "Leaves out the meeting-by-meeting history, the implementation plan and task IDs, the raw benchmark output, and the glossary, and doesn't state the same fact in several sections.",
+        "Changes no decision and adds no facts, numbers, or resolutions that are not in the source."
+      ],
+      "checks": [
+        {
+          "id": "keeps-incident",
+          "type": "contains",
+          "value": "INC-2318"
+        },
+        {
+          "id": "keeps-lost-events",
+          "type": "regex",
+          "pattern": "2,?140"
+        },
+        {
+          "id": "keeps-latency-budget",
+          "type": "regex",
+          "pattern": "\\b5\\s?ms"
+        },
+        {
+          "id": "keeps-must",
+          "type": "regex",
+          "pattern": "\\bMUST\\b"
+        },
+        {
+          "id": "keeps-must-not",
+          "type": "regex",
+          "pattern": "\\bMUST NOT\\b"
+        },
+        {
+          "id": "keeps-ordering-constraint",
+          "type": "regex",
+          "pattern": "same order|per-order",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-at-least-once",
+          "type": "regex",
+          "pattern": "at[- ]least[- ]once",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-retry-alternative",
+          "type": "regex",
+          "pattern": "retr(y|ies)",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-debezium",
+          "type": "contains",
+          "value": "Debezium"
+        },
+        {
+          "id": "keeps-kafka-connect",
+          "type": "contains",
+          "value": "Kafka Connect"
+        },
+        {
+          "id": "keeps-domain-events-reason",
+          "type": "regex",
+          "pattern": "row (changes|diffs)|domain events",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-kafka-transactions",
+          "type": "regex",
+          "pattern": "Kafka transactions|transactional producer",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-idempotency",
+          "type": "regex",
+          "pattern": "idempot|dedup",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-unready-consumers",
+          "type": "regex",
+          "pattern": "billing[\\s\\S]{0,120}notifications|notifications[\\s\\S]{0,120}billing"
+        },
+        {
+          "id": "keeps-poll-delay",
+          "type": "regex",
+          "pattern": "500\\s?ms"
+        },
+        {
+          "id": "keeps-table-growth",
+          "type": "regex",
+          "pattern": "180,?000"
+        },
+        {
+          "id": "keeps-relay-alert",
+          "type": "regex",
+          "pattern": "oldest unsent",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-benchmark-result",
+          "type": "regex",
+          "pattern": "1\\.7\\s?ms|19\\.9"
+        },
+        {
+          "id": "keeps-retention-question",
+          "type": "regex",
+          "pattern": "\\b90\\b"
+        },
+        {
+          "id": "keeps-payments-question",
+          "type": "contains",
+          "value": "payments"
+        },
+        {
+          "id": "status-proposed",
+          "type": "regex",
+          "pattern": "status\\W{0,6}proposed",
+          "flags": "i"
+        },
+        {
+          "id": "drops-meeting-history",
+          "type": "not_regex",
+          "pattern": "2026-09-03|2026-09-10|2026-10-01"
+        },
+        {
+          "id": "drops-implementation-plan",
+          "type": "not_regex",
+          "pattern": "bigserial|ORDER BY id|order\\.created\\.shadow|20261014_create_outbox",
+          "flags": "i"
+        },
+        {
+          "id": "drops-raw-benchmark",
+          "type": "not_contains",
+          "value": "rows_written"
+        },
+        {
+          "id": "drops-glossary",
+          "type": "not_regex",
+          "pattern": "^#+\\s*glossary",
+          "flags": "im"
+        },
+        {
+          "id": "at-most-80pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.8
+        },
+        {
+          "id": "paragraphs-within-5-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "runbook-compression",
+      "artifact": "runbook",
+      "prompt": "On-call says this failover runbook is too long to follow during an incident. Rewrite it.",
+      "files": [
+        "evals/fixtures/12-long-runbook.md"
+      ],
+      "expected_output": "A runbook that keeps when to use it, the prerequisites, the write pause, every command in order with the lag threshold and the fencing warning, verification, and what to do before and after promotion, and drops the history, the replication background, and the FAQ.",
+      "expectations": [
+        "Before step 1, states when to use the runbook (the primary unreachable for more than 5 minutes, or the incident commander decides; not for a slow primary or a short blip), the prerequisites (VPN and the ops-admin role, the incident commander's go-ahead, a post in #incidents), and that writes pause for about 4 minutes.",
+        "Gives numbered steps in the source's order, with every command exactly as given: maintenance on, the replication-lag query, fence us-east, promote eu-west, set DB_HOST and watch the rollout, maintenance off.",
+        "Keeps the lag rule: under 30 seconds carry on; at 30 seconds or more stop and let the incident commander decide; record the lag in the incident timeline either way.",
+        "Keeps the warnings an operator must not miss: fence the old primary even if it looks dead, or risk split brain; promotion is one-way.",
+        "Keeps verification (healthz returns {\"db\":\"ok\",\"region\":\"eu-west\"}; the Orders / Writes dashboard back to normal within 5 minutes) and recovery (before promotion, maintenance off; after it, no rollback, and fail back later with docs/runbooks/orders-failback.md in a planned window).",
+        "Leaves out the history of failover.sh and INC-1902, the background on replication beyond what the warnings need, and the FAQ.",
+        "Invents no commands, hosts, thresholds, or steps."
+      ],
+      "checks": [
+        {
+          "id": "keeps-maintenance-on",
+          "type": "contains",
+          "value": "opsctl orders maintenance on"
+        },
+        {
+          "id": "keeps-lag-query",
+          "type": "contains",
+          "value": "pg_last_xact_replay_timestamp()"
+        },
+        {
+          "id": "keeps-fence",
+          "type": "contains",
+          "value": "opsctl orders db fence --region us-east"
+        },
+        {
+          "id": "keeps-promote",
+          "type": "contains",
+          "value": "opsctl orders db promote --region eu-west"
+        },
+        {
+          "id": "keeps-repoint",
+          "type": "contains",
+          "value": "kubectl -n orders set env deploy/orders-api DB_HOST=orders-db.eu-west.internal"
+        },
+        {
+          "id": "keeps-rollout-watch",
+          "type": "contains",
+          "value": "kubectl -n orders rollout status deploy/orders-api"
+        },
+        {
+          "id": "keeps-maintenance-off",
+          "type": "contains",
+          "value": "opsctl orders maintenance off"
+        },
+        {
+          "id": "keeps-safe-order",
+          "type": "regex",
+          "pattern": "maintenance on[\\s\\S]*pg_last_xact_replay_timestamp[\\s\\S]*db fence[\\s\\S]*db promote[\\s\\S]*set env[\\s\\S]*maintenance off"
+        },
+        {
+          "id": "keeps-lag-threshold",
+          "type": "regex",
+          "pattern": "30\\s?(s\\b|sec)",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-trigger-condition",
+          "type": "regex",
+          "pattern": "unreachable[\\s\\S]{0,60}5 min|5 min[\\s\\S]{0,60}unreachable",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-write-pause",
+          "type": "regex",
+          "pattern": "4 min"
+        },
+        {
+          "id": "keeps-split-brain",
+          "type": "regex",
+          "pattern": "split[- ]brain",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-incident-commander",
+          "type": "regex",
+          "pattern": "incident commander",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-healthz",
+          "type": "contains",
+          "value": "https://orders.internal/healthz"
+        },
+        {
+          "id": "keeps-failback-link",
+          "type": "contains",
+          "value": "docs/runbooks/orders-failback.md"
+        },
+        {
+          "id": "drops-history",
+          "type": "not_regex",
+          "pattern": "47 minutes|retired in March|game days"
+        },
+        {
+          "id": "drops-faq",
+          "type": "not_regex",
+          "pattern": "^#+\\s*(faq|frequently asked)|isn't failover automatic|in 2024|planned for next year",
+          "flags": "im"
+        },
+        {
+          "id": "at-most-70pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.7
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "pr-from-branch",
+      "artifact": "pull request description",
+      "prompt": "Write the PR description for this branch. The repository's PR template is included.",
+      "files": [
+        "evals/fixtures/13-branch-notes.md"
+      ],
+      "expected_output": "A description in the repository's template that gives the why, the new flow, the migration, the v1 deprecation and the custom-domain gap, the security boundary, testing and its gaps, and the two open questions, and leaves the retry settings, the ADR's alternatives, tool versions, the test cost, and the follow-ups to the commits, the ADR, and the issues.",
+      "expectations": [
+        "Follows the repository's PR template (What and why, Testing, Checklist) under a title that names the change, and closes #902.",
+        "Explains why (uploads over about 25 MB time out at the gateway's 30-second limit, and large uploads spike API memory) and what changes: the presign endpoint (one key, 10 minutes, 200 MB), the confirm step and scan gate (pending, 409 until the scan passes), and the migration with its backfill of existing rows to clean.",
+        "States the compatibility impact: POST /v1/attachments is deprecated with a Sunset of 2027-03-01 and stops working then; mobile apps before 4.2 still use it; workspaces on custom domains can't upload until their domains are added to the bucket's CORS rules.",
+        "States the security model briefly: the bucket blocks public access and the bucket policy plus the signed conditions are the boundary; downloads go through the API after a membership check, with 60-second signed URLs; the declared content type isn't trusted, and the scanner checks magic bytes.",
+        "Reports testing as done: unit, integration, and the Playwright suite in Chrome and Firefox; the load test's result (API memory flat at about 310 MB against a 2.1 GB peak); the migration on a staging snapshot. States what was not tested: Safari, the mobile apps, and a scan backlog over 10,000 files.",
+        "Asks reviewers the two open questions (#915, the sunset date; #916, a per-plan size limit) and points to ADR-0021 instead of restating its rejected alternatives.",
+        "Leaves out what other artifacts hold: the client's retry settings, the ADR's rejected alternatives and approval date, test tool versions and the load test's cost, and the follow-up list. States each fact once.",
+        "Adds no facts, results, or decisions that are not in the notes."
+      ],
+      "checks": [
+        {
+          "id": "follows-template",
+          "type": "regex",
+          "pattern": "^#+\\s*What and why[\\s\\S]*^#+\\s*Testing[\\s\\S]*^#+\\s*Checklist",
+          "flags": "im"
+        },
+        {
+          "id": "keeps-checklist",
+          "type": "regex",
+          "pattern": "^\\s*[-*] \\[[ xX]\\] ",
+          "flags": "m"
+        },
+        {
+          "id": "closes-issue",
+          "type": "regex",
+          "pattern": "(closes|fixes|resolves)\\s+#902",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-presign-endpoint",
+          "type": "contains",
+          "value": "/v2/attachments/presign"
+        },
+        {
+          "id": "keeps-url-expiry",
+          "type": "regex",
+          "pattern": "10[- ]min",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-size-limit",
+          "type": "regex",
+          "pattern": "200\\s?MB"
+        },
+        {
+          "id": "keeps-scan-gate",
+          "type": "regex",
+          "pattern": "\\b409\\b"
+        },
+        {
+          "id": "keeps-migration",
+          "type": "contains",
+          "value": "20261019_attachment_status"
+        },
+        {
+          "id": "keeps-backfill",
+          "type": "regex",
+          "pattern": "backfill|existing (rows|attachments)",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-sunset",
+          "type": "contains",
+          "value": "2027-03-01"
+        },
+        {
+          "id": "keeps-mobile-version",
+          "type": "regex",
+          "pattern": "\\b4\\.2\\b"
+        },
+        {
+          "id": "keeps-cors-limitation",
+          "type": "regex",
+          "pattern": "CORS|custom domain",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-security-boundary",
+          "type": "regex",
+          "pattern": "bucket policy|public access",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-untested-safari",
+          "type": "contains",
+          "value": "Safari"
+        },
+        {
+          "id": "keeps-untested-backlog",
+          "type": "regex",
+          "pattern": "10,?000"
+        },
+        {
+          "id": "keeps-open-questions",
+          "type": "regex",
+          "pattern": "#915[\\s\\S]*#916|#916[\\s\\S]*#915"
+        },
+        {
+          "id": "keeps-adr-reference",
+          "type": "contains",
+          "value": "ADR-0021"
+        },
+        {
+          "id": "drops-retry-internals",
+          "type": "not_regex",
+          "pattern": "500\\s?ms|4 times|four times",
+          "flags": "i"
+        },
+        {
+          "id": "drops-adr-alternatives",
+          "type": "not_regex",
+          "pattern": "\\btus\\b|holds parts",
+          "flags": "i"
+        },
+        {
+          "id": "drops-test-environment",
+          "type": "not_regex",
+          "pattern": "LocalStack 3\\.8|Chrome 131|Firefox 133|Node 22\\.11|\\$3\\.12"
+        },
+        {
+          "id": "drops-follow-up-backlog",
+          "type": "not_regex",
+          "pattern": "comments panel|LocalStack to 4|dashboard for scan",
+          "flags": "i"
+        },
+        {
+          "id": "states-expiry-once",
+          "type": "max_mentions",
+          "pattern": "10[- ]minute",
+          "flags": "i",
+          "value": 1
+        },
+        {
+          "id": "at-most-80pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.8
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
+        }
+      ]
     }
   ]
 }

@@ -4,12 +4,12 @@
 
 An [Agent Skill](https://agentskills.io/specification) for writing and revising engineering documents that people read: READMEs, guides, API docs, runbooks, RFCs, specs, ADRs, PR descriptions, commit messages, release notes, technical explanations, and handoffs. It loads in Claude Code, OpenAI Codex, and Pi. v0.1.0 is validated for Claude Code only.
 
-The agent keeps every technical fact from the source (identifiers, numbers, commands, constraints, caveats, stated uncertainty) and writes for a specific reader, without filler, inflated claims, or formulaic formatting.
+The agent keeps every technical fact the reader needs exactly as the source gives it (identifiers, numbers, commands, constraints, caveats, stated uncertainty) and writes for a specific reader, without filler, inflated claims, or formulaic formatting.
 
 ## What it does
 
 - Starts from the reader: who they are, what they need to do or decide, and what they already know.
-- Keeps documents brief by default: the facts the reader needs to act or decide stay, and evidence, investigation history, and background go behind a link. The user can ask for them in an appendix.
+- Chooses content by what the reader needs to understand, act, or decide, and states each fact once. Accurate detail with a better home, such as how a change was made, a decision's history, test logs, or follow-up work, is linked instead of repeated, and the user can ask for it in an appendix. In its own home that detail stays: an ADR keeps every alternative, a runbook every command.
 - Keeps one idea per paragraph, sized to where the artifact is read: three lines in a commit message, five sentences in an RFC, spec, or ADR, and three sentences elsewhere.
 - Follows the repository's conventions first: PR templates, commit history, commitlint config, ADR folders, the CHANGELOG format, and neighbouring docs.
 - Writes only what the source supports. Missing facts go in a short note to the user, or into the document as marked gaps when it is a draft under review. The agent's own analysis never appears as the author's.
@@ -57,6 +57,7 @@ The agent loads the skill when a task matches its description, such as "write th
 - The description is about 70 tokens: the artifact types that should trigger it, and one exclusion for agent-facing text.
 - The rules come from running the cases without the skill first. Baseline models already kept facts well. They failed on long commentary after the document, bold and emoji, and their own analysis written as the author's. Early drafts of the skill added empty sections and TODO stubs, so section checklists became reader priorities.
 - The fact rules have an order: secrets and personal data first, then the facts this reader needs, then writing only what the source supports, then the author's voice. "Keep every fact" alone conflicts with relevance edits and with removing sensitive material.
+- Fidelity and relevance are separate questions. A fact that appears must be exact; whether it appears depends on what the reader would get wrong without it. Through v0.3.0 the skill asked for every technical fact in the source to arrive intact, and no eval case had a source that said too much. A content pass now runs before the wording pass, and four cases start from long, accurate material.
 - The bar is the short rule, not no guidance. If the skill stops beating the rule, the rule should replace it.
 - Conventional Commits rules apply only where a repository uses them. Line lengths, mood, and subject case follow the repository's history; body length doesn't. A body says why in one paragraph, with one-line bullets for separate changes: the diff shows how, and the PR holds the testing.
 - Paragraph limits follow where a document is read. A commit is read in a 72-column terminal, so it gets three lines; an RFC, spec, or ADR carries trade-offs, so it gets five sentences; anything else gets three.
@@ -78,12 +79,13 @@ The rules restate these sources; nothing is copied.
 - It works from the material the agent has. It cannot supply missing facts or verify claims beyond the source.
 - Its guidance is tuned for English. It follows the language of the request, but its examples of formulaic prose are English.
 - Its benefit over a short writing rule is measured for Claude Code only.
+- Asked only to polish someone's draft, it trims inside sections but tends to keep the author's sections, even ones the reader doesn't need. Ask for a shorter version when that's what you want.
 - It has guidance for issues, but its description doesn't name them, so it may not load for an issue on its own; invoke it explicitly.
-- The eval suite is small (nine cases) and its judges are models; see [`evals/README.md`](evals/README.md#limitations).
+- The eval suite is small (thirteen cases) and its judges are models; see [`evals/README.md`](evals/README.md#limitations).
 
 ## Evaluation
 
-The eval suite compares the skill with no guidance and with a one-paragraph writing rule, on nine cases, in Claude Code and Codex. Code checks preserved facts and leaked secrets; a blind panel of one judge from each model family grades the rest; 20 queries, half of them near misses, test triggering. The verdict fails closed if any result is missing. [`evals/README.md`](evals/README.md) has the method and release gates.
+The eval suite compares the skill with no guidance and with a one-paragraph writing rule, on thirteen cases, in Claude Code and Codex. Code checks preserved facts and leaked secrets; a blind panel of one judge from each model family grades the rest; 20 queries, half of them near misses, test triggering. The verdict fails closed if any result is missing. [`evals/README.md`](evals/README.md) has the method and release gates.
 
 Result for v0.1.0 ([details](evals/results/v0.1.0.md)): with Claude Code, judges preferred the skill over the short rule in 30 of 42 groups, and the rule in 9. With Codex, they preferred the rule, 21 groups to 15, although the skill kept more facts. A person's blind check of five groups agreed with 9 of 10 judge verdicts. For Codex and Pi, put the short rule in the global instructions instead of installing the skill.
 
