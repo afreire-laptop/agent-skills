@@ -1303,6 +1303,160 @@
           "value": 3
         }
       ]
+    },
+    {
+      "id": 13,
+      "name": "pr-from-branch",
+      "artifact": "pull request description",
+      "prompt": "Write the PR description for this branch. The repository's PR template is included.",
+      "files": [
+        "evals/fixtures/13-branch-notes.md"
+      ],
+      "expected_output": "A description in the repository's template that gives the why, the new flow, the migration, the v1 deprecation and the custom-domain gap, the security boundary, testing and its gaps, and the two open questions, and leaves the retry settings, the ADR's alternatives, tool versions, the test cost, and the follow-ups to the commits, the ADR, and the issues.",
+      "expectations": [
+        "Follows the repository's PR template (What and why, Testing, Checklist) under a title that names the change, and closes #902.",
+        "Explains why (uploads over about 25 MB time out at the gateway's 30-second limit, and large uploads spike API memory) and what changes: the presign endpoint (one key, 10 minutes, 200 MB), the confirm step and scan gate (pending, 409 until the scan passes), and the migration with its backfill of existing rows to clean.",
+        "States the compatibility impact: POST /v1/attachments is deprecated with a Sunset of 2027-03-01 and stops working then; mobile apps before 4.2 still use it; workspaces on custom domains can't upload until their domains are added to the bucket's CORS rules.",
+        "States the security model briefly: the bucket blocks public access and the bucket policy plus the signed conditions are the boundary; downloads go through the API after a membership check, with 60-second signed URLs; the declared content type isn't trusted, and the scanner checks magic bytes.",
+        "Reports testing as done: unit, integration, and the Playwright suite in Chrome and Firefox; the load test's result (API memory flat at about 310 MB against a 2.1 GB peak); the migration on a staging snapshot. States what was not tested: Safari, the mobile apps, and a scan backlog over 10,000 files.",
+        "Asks reviewers the two open questions (#915, the sunset date; #916, a per-plan size limit) and points to ADR-0021 instead of restating its rejected alternatives.",
+        "Leaves out what other artifacts hold: the client's retry settings, the ADR's rejected alternatives and approval date, test tool versions and the load test's cost, and the follow-up list. States each fact once.",
+        "Adds no facts, results, or decisions that are not in the notes."
+      ],
+      "checks": [
+        {
+          "id": "follows-template",
+          "type": "regex",
+          "pattern": "^#+\\s*What and why[\\s\\S]*^#+\\s*Testing[\\s\\S]*^#+\\s*Checklist",
+          "flags": "im"
+        },
+        {
+          "id": "keeps-checklist",
+          "type": "regex",
+          "pattern": "^\\s*[-*] \\[[ xX]\\] ",
+          "flags": "m"
+        },
+        {
+          "id": "closes-issue",
+          "type": "regex",
+          "pattern": "(closes|fixes|resolves)\\s+#902",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-presign-endpoint",
+          "type": "contains",
+          "value": "/v2/attachments/presign"
+        },
+        {
+          "id": "keeps-url-expiry",
+          "type": "regex",
+          "pattern": "10[- ]min",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-size-limit",
+          "type": "regex",
+          "pattern": "200\\s?MB"
+        },
+        {
+          "id": "keeps-scan-gate",
+          "type": "regex",
+          "pattern": "\\b409\\b"
+        },
+        {
+          "id": "keeps-migration",
+          "type": "contains",
+          "value": "20261019_attachment_status"
+        },
+        {
+          "id": "keeps-backfill",
+          "type": "regex",
+          "pattern": "backfill|existing (rows|attachments)",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-sunset",
+          "type": "contains",
+          "value": "2027-03-01"
+        },
+        {
+          "id": "keeps-mobile-version",
+          "type": "regex",
+          "pattern": "\\b4\\.2\\b"
+        },
+        {
+          "id": "keeps-cors-limitation",
+          "type": "regex",
+          "pattern": "CORS|custom domain",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-security-boundary",
+          "type": "regex",
+          "pattern": "bucket policy|public access",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-untested-safari",
+          "type": "contains",
+          "value": "Safari"
+        },
+        {
+          "id": "keeps-untested-backlog",
+          "type": "regex",
+          "pattern": "10,?000"
+        },
+        {
+          "id": "keeps-open-questions",
+          "type": "regex",
+          "pattern": "#915[\\s\\S]*#916|#916[\\s\\S]*#915"
+        },
+        {
+          "id": "keeps-adr-reference",
+          "type": "contains",
+          "value": "ADR-0021"
+        },
+        {
+          "id": "drops-retry-internals",
+          "type": "not_regex",
+          "pattern": "500\\s?ms|4 times|four times",
+          "flags": "i"
+        },
+        {
+          "id": "drops-adr-alternatives",
+          "type": "not_regex",
+          "pattern": "\\btus\\b|holds parts",
+          "flags": "i"
+        },
+        {
+          "id": "drops-test-environment",
+          "type": "not_regex",
+          "pattern": "LocalStack 3\\.8|Chrome 131|Firefox 133|Node 22\\.11|\\$3\\.12"
+        },
+        {
+          "id": "drops-follow-up-backlog",
+          "type": "not_regex",
+          "pattern": "comments panel|LocalStack to 4|dashboard for scan",
+          "flags": "i"
+        },
+        {
+          "id": "states-expiry-once",
+          "type": "max_mentions",
+          "pattern": "10[- ]minute",
+          "flags": "i",
+          "value": 1
+        },
+        {
+          "id": "at-most-80pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.8
+        },
+        {
+          "id": "paragraphs-within-3-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 3
+        }
+      ]
     }
   ]
 }
