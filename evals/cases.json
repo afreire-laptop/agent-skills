@@ -1015,6 +1015,173 @@
           "value": 3
         }
       ]
+    },
+    {
+      "id": 11,
+      "name": "adr-compression",
+      "artifact": "ADR",
+      "prompt": "ADR 0014 has grown long. Tighten it before the architecture review.",
+      "files": [
+        "evals/fixtures/11-long-adr.md"
+      ],
+      "expected_output": "A shorter ADR that keeps the context, the constraints, the decision, every alternative with its reason, every consequence good and bad, the benchmark result, and the open questions, and drops the meeting history, the implementation plan, the raw benchmark output, and the glossary.",
+      "expectations": [
+        "Keeps the ADR's structure and status: Proposed, context, decision, alternatives with the reason each lost, consequences, and open questions.",
+        "The context keeps the dual-write problem and INC-2318's impact (2,140 lost order.created events, orders not shipped), and all three constraints with their requirement keywords: MUST NOT add more than 5 ms to checkout p99, MUST keep per-order ordering, SHOULD NOT need infrastructure no team operates.",
+        "Keeps every alternative with its reason: retries narrow the window but don't close it; Debezium needs Kafka Connect, which no team operates, and publishes row changes rather than domain events; Kafka transactions aren't atomic across Kafka and PostgreSQL.",
+        "Keeps every consequence, the bad ones included: consumers must be idempotent because delivery is at-least-once, and billing and notifications don't deduplicate yet; events wait for the 500 ms poll; the table grows by about 180,000 rows a day and needs cleanup; the relay needs an alert on the age of the oldest unsent row.",
+        "Keeps the benchmark's conclusion: the outbox added 1.7 ms to checkout p99 (18.2 to 19.9 ms), within the 5 ms budget.",
+        "Keeps both open questions: how long to keep sent rows (7 days planned, the audit team asking about 90), and whether payments shares the outbox table.",
+        "Leaves out the meeting-by-meeting history, the implementation plan and task IDs, the raw benchmark output, and the glossary, and doesn't state the same fact in several sections.",
+        "Changes no decision and adds no facts, numbers, or resolutions that are not in the source."
+      ],
+      "checks": [
+        {
+          "id": "keeps-incident",
+          "type": "contains",
+          "value": "INC-2318"
+        },
+        {
+          "id": "keeps-lost-events",
+          "type": "regex",
+          "pattern": "2,?140"
+        },
+        {
+          "id": "keeps-latency-budget",
+          "type": "regex",
+          "pattern": "\\b5\\s?ms"
+        },
+        {
+          "id": "keeps-must",
+          "type": "regex",
+          "pattern": "\\bMUST\\b"
+        },
+        {
+          "id": "keeps-must-not",
+          "type": "regex",
+          "pattern": "\\bMUST NOT\\b"
+        },
+        {
+          "id": "keeps-ordering-constraint",
+          "type": "regex",
+          "pattern": "same order|per-order",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-at-least-once",
+          "type": "regex",
+          "pattern": "at[- ]least[- ]once",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-retry-alternative",
+          "type": "regex",
+          "pattern": "retr(y|ies)",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-debezium",
+          "type": "contains",
+          "value": "Debezium"
+        },
+        {
+          "id": "keeps-kafka-connect",
+          "type": "contains",
+          "value": "Kafka Connect"
+        },
+        {
+          "id": "keeps-domain-events-reason",
+          "type": "regex",
+          "pattern": "row (changes|diffs)|domain events",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-kafka-transactions",
+          "type": "regex",
+          "pattern": "Kafka transactions|transactional producer",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-idempotency",
+          "type": "regex",
+          "pattern": "idempot|dedup",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-unready-consumers",
+          "type": "regex",
+          "pattern": "billing[\\s\\S]{0,120}notifications|notifications[\\s\\S]{0,120}billing"
+        },
+        {
+          "id": "keeps-poll-delay",
+          "type": "regex",
+          "pattern": "500\\s?ms"
+        },
+        {
+          "id": "keeps-table-growth",
+          "type": "regex",
+          "pattern": "180,?000"
+        },
+        {
+          "id": "keeps-relay-alert",
+          "type": "regex",
+          "pattern": "oldest unsent",
+          "flags": "i"
+        },
+        {
+          "id": "keeps-benchmark-result",
+          "type": "regex",
+          "pattern": "1\\.7\\s?ms|19\\.9"
+        },
+        {
+          "id": "keeps-retention-question",
+          "type": "regex",
+          "pattern": "\\b90\\b"
+        },
+        {
+          "id": "keeps-payments-question",
+          "type": "contains",
+          "value": "payments"
+        },
+        {
+          "id": "status-proposed",
+          "type": "regex",
+          "pattern": "status\\W{0,6}proposed",
+          "flags": "i"
+        },
+        {
+          "id": "drops-meeting-history",
+          "type": "not_regex",
+          "pattern": "2026-09-03|2026-09-10|2026-10-01"
+        },
+        {
+          "id": "drops-implementation-plan",
+          "type": "not_regex",
+          "pattern": "bigserial|ORDER BY id|ORD-4\\d\\d|20261014_create_outbox",
+          "flags": "i"
+        },
+        {
+          "id": "drops-raw-benchmark",
+          "type": "not_contains",
+          "value": "rows_written"
+        },
+        {
+          "id": "drops-glossary",
+          "type": "not_regex",
+          "pattern": "^#+\\s*glossary",
+          "flags": "im"
+        },
+        {
+          "id": "at-most-80pct-of-input-words",
+          "type": "max_word_ratio",
+          "value": 0.8
+        },
+        {
+          "id": "paragraphs-within-5-sentences",
+          "type": "max_paragraph_sentences",
+          "value": 5
+        }
+      ]
     }
   ]
 }
