@@ -87,7 +87,7 @@ The rules restate these sources; nothing is copied.
 
 The eval suite compares the skill with no guidance and with a one-paragraph writing rule, on thirteen cases, in Claude Code and Codex. Code checks preserved facts and leaked secrets; a blind panel of one judge from each model family grades the rest; 20 queries, half of them near misses, test triggering. The verdict fails closed if any result is missing. [`evals/README.md`](evals/README.md) has the method and release gates.
 
-Result for v0.1.0 ([details](evals/results/v0.1.0.md)): with Claude Code, judges preferred the skill over the short rule in 30 of 42 groups, and the rule in 9. With Codex, they preferred the rule, 21 groups to 15, although the skill kept more facts. A person's blind check of five groups agreed with 9 of 10 judge verdicts. For Codex and Pi, put the short rule in the global instructions instead of installing the skill.
+Result for v0.1.0 ([details](evals/suites/technical-writing/results/v0.1.0.md)): with Claude Code, judges preferred the skill over the short rule in 30 of 42 groups, and the rule in 9. With Codex, they preferred the rule, 21 groups to 15, although the skill kept more facts. A person's blind check of five groups agreed with 9 of 10 judge verdicts. For Codex and Pi, put the short rule in the global instructions instead of installing the skill.
 
 ```sh
 uv run evals/run.py lint && uv run evals/run.py selftest
@@ -99,7 +99,8 @@ uv run evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
 ```
 skills/technical-writing/SKILL.md            the skill
 skills/technical-writing/agents/openai.yaml  Codex display name and short description
-evals/                                       cases, fixtures, references, runner, results
+evals/                                       the eval runner and its tools
+evals/suites/technical-writing/              the skill's cases, fixtures, references, and results
 CHANGELOG.md                                 release history
 release-please-config.json                   release pull request and changelog settings
 .github/workflows/ci.yml                     lint, selftest, type check, and commit messages on every push and pull request; release evidence on pull requests
@@ -124,7 +125,7 @@ Git tags and [`CHANGELOG.md`](CHANGELOG.md) record versions. The frontmatter has
 To release:
 
 1. Merge changes to `main`. release-please keeps a pull request titled `chore(release): vX.Y.Z` open, with the next version and its `CHANGELOG.md` entry.
-2. For a minor or major release, before merging that pull request, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`. Merge the report and the calibration result into `main` through a pull request, as `evals/results/vX.Y.Z.md` with the calibration under `## Judge spot-check`. A patch release runs only the cases its change affects.
+2. For a minor or major release, before merging that pull request, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`. Merge the report and the calibration result into `main` through a pull request, as `evals/suites/technical-writing/results/vX.Y.Z.md` with the calibration under `## Judge spot-check`. A patch release runs only the cases its change affects.
 3. Merge the release pull request once its `release-evidence` check passes. The check fails until the results file is on `main` and release-please has rebuilt the pull request on top of it. The release workflow checks again and tags `vX.Y.Z`.
 
 The `release-evidence` ruleset requires that check on `main` with no bypass, so every change, results included, reaches `main` through a pull request. If GitHub Actions is down, an admin can disable the ruleset in the repository settings.

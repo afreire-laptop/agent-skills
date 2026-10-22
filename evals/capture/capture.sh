@@ -3,7 +3,7 @@
 # Exports <commit> into a fresh directory and runs the eval runner's commands against fake CLIs.
 # For every command it records stdout, stderr, the exit code, the files written (snap.py) and the
 # CLI calls made (fake.py), then normalizes paths, timestamps and durations. Each run-id names a
-# run in evals/runs/ to copy in and exercise with report, calibrate and check; the original is
+# run in evals/runs/technical-writing/ to copy in and exercise with report, calibrate and check; the original is
 # never written. Compare two captures of the same python with compare.sh.
 set -uo pipefail
 
@@ -31,9 +31,9 @@ rm -rf "$work" "$out"
 mkdir -p "$work/repo" "$work/tmp" "$work/state" "$work/bin" "$out"
 out=$(cd "$out" && pwd)  # run() writes from inside the copy
 git -C "$REPO" archive "$commit" | tar -x -C "$work/repo"
-mkdir -p "$work/repo/evals/runs"
+mkdir -p "$work/repo/evals/runs/technical-writing"
 for r in ${runs[@]+"${runs[@]}"}; do
-  cp -Rp "$REPO/evals/runs/$r" "$work/repo/evals/runs/" || exit 1
+  cp -Rp "$REPO/evals/runs/technical-writing/$r" "$work/repo/evals/runs/technical-writing/" || exit 1
 done
 git -C "$REPO" rev-parse "$commit" >"$out/commit"
 

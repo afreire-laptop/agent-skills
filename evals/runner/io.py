@@ -33,11 +33,13 @@ ROOT = Path(__file__).resolve().parents[2]
 EVALS = ROOT / "evals"
 SKILL_DIR = ROOT / "skills" / SKILL_NAME
 SKILL_MD = SKILL_DIR / "SKILL.md"
-CASES_FILE = EVALS / "cases.json"
-TRIGGERS_FILE = EVALS / "triggers.json"
-SHORT_RULE_FILE = EVALS / "conditions" / "short-rule.md"
-JUDGE_TEMPLATE = EVALS / "judge.md"
-RUNS_DIR = EVALS / "runs"
+SUITE_DIR = EVALS / "suites" / SKILL_NAME  # the skill's eval data; case files are relative to it
+CASES_FILE = SUITE_DIR / "cases.json"
+TRIGGERS_FILE = SUITE_DIR / "triggers.json"
+SHORT_RULE_FILE = SUITE_DIR / "conditions" / "short-rule.md"
+JUDGE_TEMPLATE = SUITE_DIR / "judge.md"
+REFERENCE_DIR = SUITE_DIR / "reference"
+RUNS_DIR = EVALS / "runs" / SKILL_NAME
 
 
 def read_text(path: Path) -> str:
@@ -73,7 +75,7 @@ def cases_or_exit(spec: str) -> list[Case]:
 
 
 def case_files(case: Case) -> list[tuple[str, str]]:
-    return [(Path(f).name, read_text(ROOT / f)) for f in case.files]
+    return [(Path(f).name, read_text(SUITE_DIR / f)) for f in case.files]
 
 
 def load_guidance() -> Guidance:

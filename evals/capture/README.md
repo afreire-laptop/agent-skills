@@ -18,7 +18,7 @@ evals/capture/compare.sh /tmp/cap-main /tmp/cap-head     # IDENTICAL, or the dif
 
 `compare.sh` exits 0 when the captures are identical, 1 when they differ, and 2 when either is incomplete. A capture takes about a minute and a half. Compare captures of the same Python version only: argparse wraps help text differently, and `report.json` floats can differ. Run one capture per Python version at a time; captures of the same version share a work directory under `$TMPDIR/tw-capture/` (or `/tmp/tw-capture/`).
 
-To also run `report`, `calibrate`, and `check` on real runs, name them after the output directory, for example `capture.sh main 3.14 /tmp/cap-main v0.1.0 v0.1.0-rc2`. Each run is copied from `evals/runs/` into the export; the original is never written.
+To also run `report`, `calibrate`, and `check` on real runs, name them after the output directory, for example `capture.sh main 3.14 /tmp/cap-main v0.1.0 v0.1.0-rc2`. Each run is copied from `evals/runs/technical-writing/` into the export; the original is never written.
 
 If `uv` on your PATH is a version-manager shim that fails outside your shell environment, set `UV=/path/to/uv`.
 
@@ -46,4 +46,4 @@ The fakes reply from their input and from how many times they have seen the same
 | `snap.py` | Records the files each command wrote. |
 | `normalize.py` | Removes paths, durations, and timestamps from a capture. |
 
-`fake.py` finds the expectations in a judge prompt by two passages of `evals/judge.md`: the sentence "Each expectation describes part of a good response." and the "## Fidelity" heading with the "For each response, list:" line after it. If you change them, change `fake.py` too.
+`fake.py` finds the expectations in a judge prompt by two passages of `evals/suites/technical-writing/judge.md`: the sentence "Each expectation describes part of a good response." and the "## Fidelity" heading with the "For each response, list:" line after it. If you change them, change `fake.py` too.
