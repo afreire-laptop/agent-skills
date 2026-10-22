@@ -1,111 +1,68 @@
-# technical-writing
+# agent-skills
 
 [![skills.sh](https://skills.sh/b/afreire-laptop/technical-writing)](https://skills.sh/afreire-laptop/technical-writing)
 
-An [Agent Skill](https://agentskills.io/specification) for writing and revising engineering documents that people read: READMEs, guides, API docs, runbooks, RFCs, specs, ADRs, PR descriptions, commit messages, release notes, technical explanations, and handoffs. It loads in Claude Code, OpenAI Codex, and Pi. v0.1.0 is validated for Claude Code only.
+[Agent Skills](https://agentskills.io/specification) for engineering work. Each skill has its own eval suite, version, and releases, and loads in Claude Code, OpenAI Codex, and Pi; its docs say which agents it is measured for.
 
-The agent keeps every technical fact the reader needs exactly as the source gives it (identifiers, numbers, commands, constraints, caveats, stated uncertainty) and writes for a specific reader, without filler, inflated claims, or formulaic formatting.
+## Skills
 
-## What it does
-
-- Starts from the reader: who they are, what they need to do or decide, and what they already know.
-- Chooses content by what the reader needs to understand, act, or decide, and states each fact once. Accurate detail with a better home, such as how a change was made, a decision's history, test logs, or follow-up work, is linked instead of repeated, and the user can ask for it in an appendix. In its own home that detail stays: an ADR keeps every alternative, a runbook every command.
-- Keeps one idea per paragraph, sized to where the artifact is read: three lines in a commit message, five sentences in an RFC, spec, or ADR, and three sentences elsewhere.
-- Follows the repository's conventions first: PR templates, commit history, commitlint config, ADR folders, the CHANGELOG format, and neighbouring docs.
-- Writes only what the source supports. Missing facts go in a short note to the user, or into the document as marked gaps when it is a draft under review. The agent's own analysis never appears as the author's.
-- Replaces secrets, credentials, and personal data with placeholders.
-- Checks each artifact type for what its reader looks for first and what drafts most often lose.
-- Revises formulaic prose by pattern, not by banned words.
-- Delivers the document, followed by at most three points the user must act on.
-
-It doesn't plan or gather requirements; use a skill such as `to-spec`. It doesn't write text that agents read, such as skills, prompts, `AGENTS.md`, or agent handoffs; use a skill such as `writing-for-agents`. It doesn't impose a house style: repository conventions and the author's voice win, except that commit bodies stay short where past ones ran long. The skill is instructions only, with no scripts, hooks, or dependencies.
+| Skill | What it does | Docs | Changelog |
+|---|---|---|---|
+| [`technical-writing`](skills/technical-writing/SKILL.md) | Writes and revises engineering documents that people read, such as READMEs, runbooks, ADRs, PR descriptions, and commit messages. Measured for Claude Code. | [docs](docs/technical-writing.md) | [changelog](skills/technical-writing/CHANGELOG.md) |
 
 ## Install
 
-Install the skill for Claude Code with the [skills CLI](https://github.com/vercel-labs/skills):
+Install a skill with the [skills CLI](https://github.com/vercel-labs/skills), naming the skill with `--skill` and the agent with `-a`:
 
 ```sh
-npx skills add afreire-laptop/technical-writing --skill technical-writing -g -a claude-code
+npx skills add afreire-laptop/agent-skills --skill technical-writing -g -a claude-code
 ```
 
-This copies the skill to `~/.claude/skills/technical-writing`. Keep `-a claude-code`: without it, the CLI installs into every agent it detects, Codex included, and in our evals a one-paragraph writing rule did as well with Codex; Pi was not measured. If you list more than one agent, add `--copy`: with several agents the CLI defaults to symlinks and keeps the main copy in `~/.agents/skills/`, which Codex and Pi also load.
+This copies the skill's directory to `~/.claude/skills/technical-writing`. Without `-a`, the CLI installs into every agent it detects. If you list more than one agent, add `--copy`: with several agents the CLI defaults to symlinks and keeps the main copy in `~/.agents/skills/`, which Codex and Pi also load.
 
-For one project, run the command in the repository without `-g`. The CLI copies the skill to `.claude/skills/technical-writing` and records it in `skills-lock.json`. Run `npx skills update` to update; `-g` or `-p` limits it to global or project skills.
+For one project, run the command in the repository without `-g`. The CLI copies the skill to `.claude/skills/<skill>` and records it in `skills-lock.json`. Run `npx skills update` to update; `-g` or `-p` limits it to global or project skills.
 
 To pin a release, install from its tag. `update` keeps a pinned install on that tag; run `add` again to move it.
 
 ```sh
-npx skills add https://github.com/afreire-laptop/technical-writing/tree/v0.1.0/skills/technical-writing -g -a claude-code
+npx skills add https://github.com/afreire-laptop/agent-skills/tree/technical-writing-v0.4.0/skills/technical-writing -g -a claude-code
 ```
+
+This repository was named `technical-writing` until 2026-10-22. Commands and installs that use the old name keep working through GitHub's redirect.
 
 Start a new session after installing.
 
 ## Use
 
-The agent loads the skill when a task matches its description, such as "write the PR description" or "tighten this README". To invoke it explicitly:
+An agent loads a skill when a task matches its description. To invoke one explicitly:
 
 | Harness | Command |
 |---|---|
-| Claude Code | `/technical-writing` |
-| Codex | `$technical-writing`, or pick it from `/skills` |
-| Pi | `/skill:technical-writing` (needs `enableSkillCommands`) |
-
-## Design decisions
-
-- The skill is one file. Every run needs the fact rules, the writing guidance, and the output contract, and each artifact note is a line or two. Reference files would save a few hundred tokens per activation but add a read the agent may skip.
-- It lives in `skills/technical-writing/`, so installs get only the skill and its changelog, never the evals, and the layout matches what multi-harness tools expect.
-- The description is about 70 tokens: the artifact types that should trigger it, and one exclusion for agent-facing text.
-- The rules come from running the cases without the skill first. Baseline models already kept facts well. They failed on long commentary after the document, bold and emoji, and their own analysis written as the author's. Early drafts of the skill added empty sections and TODO stubs, so section checklists became reader priorities.
-- The fact rules have an order: secrets and personal data first, then the facts this reader needs, then writing only what the source supports, then the author's voice. "Keep every fact" alone conflicts with relevance edits and with removing sensitive material.
-- Fidelity and relevance are separate questions. A fact that appears must be exact; whether it appears depends on what the reader would get wrong without it. Through v0.3.0 the skill asked for every technical fact in the source to arrive intact, and no eval case had a source that said too much. A content pass now runs before the wording pass, and four cases start from long, accurate material.
-- The bar is the short rule, not no guidance. If the skill stops beating the rule, the rule should replace it.
-- Conventional Commits rules apply only where a repository uses them. Line lengths, mood, and subject case follow the repository's history; body length doesn't. A body says why in one paragraph, with one-line bullets for separate changes: the diff shows how, and the PR holds the testing.
-- Paragraph limits follow where a document is read. A commit is read in a 72-column terminal, so it gets three lines; an RFC, spec, or ADR carries trade-offs, so it gets five sentences; anything else gets three.
-
-## Sources
-
-The rules restate these sources; nothing is copied.
-
-- [Google developer documentation style guide](https://developers.google.com/style) (CC BY 4.0): conditions before instructions, descriptive link text, sentence-case headings, timeless wording.
-- [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): header grammar and breaking-change markers. The 50/72 line convention comes from [git](https://git-scm.com/docs/git-commit#_discussion) and Tim Pope's 2008 note, not the specification.
-- HackerOne, [Writing effective commit messages](https://www.hackerone.com/blog/writing-effective-commit-messages-git-best-practices-and-examples): a body that says why the change is needed, not how it was implemented.
-- Martin Fowler, [Architecture Decision Record](https://martinfowler.com/bliki/ArchitectureDecisionRecord.html) and [Excessive Bold](https://martinfowler.com/bliki/ExcessiveBold.html); Michael Nygard, [Documenting Architecture Decisions](https://www.cognitect.com/blog/2011/11/15/documenting-architecture-decisions).
-- Zara Cooper, [A practical guide to writing technical specs](https://stackoverflow.blog/2020/04/06/a-practical-guide-to-writing-technical-specs/).
-- [blader/humanizer](https://github.com/blader/humanizer) and [addyosmani/clarity](https://github.com/addyosmani/clarity): fact-preserving rewrites, acting on clusters of tells, and marked gaps instead of invented detail. Their catalogs and examples are not reused.
-- [doclandscape: technical writing best practices](https://doclandscape.com/technical-writing-best-practices/): one term per concept, and limits stated with numbers and failure behaviour.
-
-## Limitations
-
-- It works from the material the agent has. It cannot supply missing facts or verify claims beyond the source.
-- Its guidance is tuned for English. It follows the language of the request, but its examples of formulaic prose are English.
-- Its benefit over a short writing rule is measured for Claude Code only.
-- Asked only to polish someone's draft, it trims inside sections but tends to keep the author's sections, even ones the reader doesn't need. Ask for a shorter version when that's what you want.
-- It has guidance for issues, but its description doesn't name them, so it may not load for an issue on its own; invoke it explicitly.
-- The eval suite is small (thirteen cases) and its judges are models; see [`evals/README.md`](evals/README.md#limitations).
+| Claude Code | `/<skill>` |
+| Codex | `$<skill>`, or pick it from `/skills` |
+| Pi | `/skill:<skill>` (needs `enableSkillCommands`) |
 
 ## Evaluation
 
-The eval suite compares the skill with no guidance and with a one-paragraph writing rule, on thirteen cases, in Claude Code and Codex. Code checks preserved facts and leaked secrets; a blind panel of one judge from each model family grades the rest; 20 queries, half of them near misses, test triggering. The verdict fails closed if any result is missing. [`evals/README.md`](evals/README.md) has the method and release gates.
-
-Result for v0.1.0 ([details](evals/suites/technical-writing/results/v0.1.0.md)): with Claude Code, judges preferred the skill over the short rule in 30 of 42 groups, and the rule in 9. With Codex, they preferred the rule, 21 groups to 15, although the skill kept more facts. A person's blind check of five groups agreed with 9 of 10 judge verdicts. For Codex and Pi, put the short rule in the global instructions instead of installing the skill.
+Each skill has an eval suite in `evals/suites/<skill>/`, run by the shared runner in `evals/`. [`evals/README.md`](evals/README.md) has the method and release gates, and each skill's docs summarize its results.
 
 ```sh
 uv run evals/run.py lint && uv run evals/run.py selftest
-uv run evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
 ```
 
 ## Repository layout
 
 ```
-skills/technical-writing/SKILL.md            the skill
-skills/technical-writing/agents/openai.yaml  Codex display name and short description
-skills/technical-writing/CHANGELOG.md        release history
-evals/                                       the eval runner and its tools
-evals/suites/technical-writing/              the skill's cases, fixtures, references, and results
-release-please-config.json                   release pull request and changelog settings
-.github/workflows/ci.yml                     lint, selftest, type check, and commit messages on every push and pull request; release evidence on pull requests
-.github/workflows/release.yml                release pull requests and tags
+skills/<skill>/                  the skill: SKILL.md, agent metadata, and its CHANGELOG.md
+docs/<skill>.md                  what the skill does, its design decisions, sources, limitations, and results
+evals/                           the eval runner and its tools
+evals/suites/<skill>/            the skill's eval cases, fixtures, references, and results
+release-please-config.json       release pull request and changelog settings, one package per skill
+.github/workflows/ci.yml         lint, selftest, type check, and commit messages on every push and pull request; release evidence on pull requests
+.github/workflows/release.yml    release pull requests and tags
 ```
+
+Installs copy only `skills/<skill>/`, never the docs or evals.
 
 ## Versioning
 
@@ -113,9 +70,9 @@ Each skill has its own version. Versions follow [Semantic Versioning](https://se
 
 | Change | Commit | Version |
 |---|---|---|
-| Artifacts added to or dropped from the description, or a guarantee in "Keep the facts" removed or weakened | `feat(technical-writing)!:`, or a `BREAKING CHANGE:` footer | Major |
-| New behaviour or artifact guidance that users would notice in their output | `feat(technical-writing):` | Minor |
-| Wording that keeps the behaviour | `fix(technical-writing):` | Patch |
+| The description stops covering a task it covered, or a guarantee is removed or weakened; each skill's docs say what counts | `feat(<skill>)!:`, or a `BREAKING CHANGE:` footer | Major |
+| New behaviour that users would notice in their output | `feat(<skill>):` | Minor |
+| Wording that keeps the behaviour | `fix(<skill>):` | Patch |
 | Evals, docs, or CI only | `test`, `docs`, `ci`, `build`, `refactor`, or `chore` | None |
 
 Installs copy only a skill's directory, so changes outside `skills/<skill>/` make no release. release-please gives a commit to every skill whose files it changes, whatever its scope, so a releasing commit changes exactly one skill and names it as its scope. CI rejects a commit that breaks either rule, and a commit that changes a skill with a type that makes no release; a skill's `CHANGELOG.md` doesn't count as a change to the skill.
