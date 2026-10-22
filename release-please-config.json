@@ -6,7 +6,7 @@
       "release-type": "simple",
       "include-component-in-tag": false,
       "pull-request-title-pattern": "chore(release): v${version}",
-      "pull-request-footer": "Before merging a minor or major release, run the full eval and the human calibration check, and commit `evals/results/vX.Y.Z.md`, with X.Y.Z from this title, to main (see README.md, \"Versioning\"). Without it, the release workflow does not tag.",
+      "pull-request-footer": "Before merging a minor or major release, run the full eval and the human calibration check, and commit `evals/suites/technical-writing/results/vX.Y.Z.md`, with X.Y.Z from this title, to main (see README.md, \"Versioning\"). Without it, the release workflow does not tag.",
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug Fixes" },

@@ -6,19 +6,27 @@ They follow the practices in Anthropic's [skill authoring guide](https://platfor
 
 ## Layout
 
+The runner and its tools sit at the top of `evals/`. The skill's eval data is a suite in `suites/technical-writing/`; the runner reads the suite named by `SKILL_NAME` in `runner/models.py`. Suite files named in the rest of this README, such as `cases.json` and `judge.md`, are in the suite.
+
 | Path | Contents |
 |---|---|
-| `cases.json` | Quality cases in skill-creator's `evals.json` shape (`id`, `prompt`, `files`, `expected_output`, `expectations`), plus `checks`: deterministic assertions. |
+| `run.py` | The runner's command line. Python 3.10+, run with uv; Pydantic is its one dependency. |
+| `runner/` | The runner's modules. `commands.py` has one handler per subcommand and `io.py` the file and process access; the other modules (`models`, `prompts`, `harness`, `checks`, `report`, `gates`, `lint`, `calibrate`, `selftest`) touch no files or processes and import neither. |
+| `capture/` | Fake `claude` and `codex` CLIs and a capture script that check, without model calls, that a runner change keeps its behaviour byte-identical. See [`capture/README.md`](capture/README.md). |
+| `run.py.lock` | The runner's pinned dependencies, with hashes. Regenerate with `uv lock --script evals/run.py`. |
+| `runs/technical-writing/` | Raw runs, one directory per run id. Git-ignored. |
+
+A suite holds:
+
+| Path | Contents |
+|---|---|
+| `cases.json` | Quality cases in skill-creator's `evals.json` shape (`id`, `prompt`, `files`, `expected_output`, `expectations`), plus `checks`: deterministic assertions. `files` paths are relative to the suite. |
 | `fixtures/` | Input documents for each case. All names, hosts, and credentials are fictional; the credentials are marked `fixture-only` so secret scanners and readers can tell. |
 | `reference/` | A reference solution per case. `selftest` proves each one passes every check. |
 | `triggers.json` | 10 should-trigger queries and 10 near misses, in skill-creator's trigger eval-set format. |
 | `conditions/short-rule.md` | Condition B: the strongest short writing rule we could write, the skill's real competitor. |
 | `judge.md` | The judge prompt. |
-| `run.py` | The runner's command line. Python 3.10+, run with uv; Pydantic is its one dependency. |
-| `runner/` | The runner's modules. `commands.py` has one handler per subcommand and `io.py` the file and process access; the other modules (`models`, `prompts`, `harness`, `checks`, `report`, `gates`, `lint`, `calibrate`, `selftest`) touch no files or processes and import neither. |
-| `capture/` | Fake `claude` and `codex` CLIs and a capture script that check, without model calls, that a runner change keeps its behaviour byte-identical. See [`capture/README.md`](capture/README.md). |
-| `run.py.lock` | The runner's pinned dependencies, with hashes. Regenerate with `uv lock --script evals/run.py`. |
-| `results/` | Committed summaries of release runs. Raw runs go to `runs/`, which is git-ignored. |
+| `results/` | Committed summaries of release runs. |
 
 ## Requirements
 
@@ -40,7 +48,7 @@ uv run evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
 uv run evals/run.py all --run-id v0.1.0 --judge-effort high
 ```
 
-Every subcommand takes `--run-id`, and `generate`, `judge`, and `triggers` skip work that already succeeded, so an interrupted run resumes where it stopped. Use `--harness claude` or `--harness codex` to run one CLI, `--cases` to select cases, and `--claude-model`, `--codex-model`, `--claude-effort`, `--codex-effort` to pin the writer. Each run records CLI versions, models, the git commit, and hashes of the skill, the short rule, and `cases.json` in `runs/<run-id>/manifest.json`.
+Every subcommand takes `--run-id`, and `generate`, `judge`, and `triggers` skip work that already succeeded, so an interrupted run resumes where it stopped. Use `--harness claude` or `--harness codex` to run one CLI, `--cases` to select cases, and `--claude-model`, `--codex-model`, `--claude-effort`, `--codex-effort` to pin the writer. Each run records CLI versions, models, the git commit, and hashes of the skill, the short rule, and `cases.json` in `runs/technical-writing/<run-id>/manifest.json`.
 
 ## Cases
 
@@ -72,7 +80,7 @@ The report reduces each judgement to one verdict per pair of conditions (C vs B,
 
 Deviation from the cited practice: one judge call grades all dimensions for a group, rather than one isolated call per dimension. This keeps a release run at 156 judgements instead of 624. The mitigations are structured output, reasoning before verdicts, randomized order, a two-family panel, group-level aggregation, and human calibration.
 
-**Calibrate the judge before trusting it.** For a release, `uv run evals/run.py calibrate --run-id <run-id>` writes `runs/<run-id>/calibration/packet.md`: one randomly chosen group per case, up to five, showing the task, the source, and the skill's and the short rule's outputs as X and Y in random order. A person decides each group, then fills in `key.md`, which holds both judges' verdicts, and puts the agreement rate in the results file. If agreement is poor, fix `judge.md` before drawing conclusions.
+**Calibrate the judge before trusting it.** For a release, `uv run evals/run.py calibrate --run-id <run-id>` writes `runs/technical-writing/<run-id>/calibration/packet.md`: one randomly chosen group per case, up to five, showing the task, the source, and the skill's and the short rule's outputs as X and Y in random order. A person decides each group, then fills in `key.md`, which holds both judges' verdicts, and puts the agreement rate in the results file. If agreement is poor, fix `judge.md` before drawing conclusions.
 
 ## Triggers
 
@@ -103,7 +111,7 @@ If gates 1 and 2 pass but gate 3 fails, the short rule does the job, and the rec
 ## Adding a case
 
 1. Add a fixture under `fixtures/` with the flaw the case targets and enough specific facts to check.
-2. Add the case to `cases.json`. Keep `expectations` checkable by someone reading only the source and the output. Give every check a descriptive `id`.
+2. Add the case to `cases.json`, with its `files` relative to the suite, such as `fixtures/14-example.md`. Keep `expectations` checkable by someone reading only the source and the output. Give every check a descriptive `id`.
 3. Write the reference solution in `reference/<name>.md`, and add the length cap: 1.5 times the reference's word count divided by the input's, rounded up to a tenth.
 4. Run `lint` and `selftest`. The reference must pass every check, and the raw fixture must fail at least one.
 

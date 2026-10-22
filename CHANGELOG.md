@@ -25,7 +25,7 @@ All notable changes to this skill are recorded here, and versions follow the ski
 
 ## [0.1.0] - 2026-10-10
 
-Released for Claude Code only. Every release gate passed for Claude Code; for Codex the short writing rule did as well as the skill. See [`evals/results/v0.1.0.md`](evals/results/v0.1.0.md).
+Released for Claude Code only. Every release gate passed for Claude Code; for Codex the short writing rule did as well as the skill. See [`evals/suites/technical-writing/results/v0.1.0.md`](evals/suites/technical-writing/results/v0.1.0.md).
 
 ### Added
 

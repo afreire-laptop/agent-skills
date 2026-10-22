@@ -70,7 +70,7 @@ def writer_text(prompt: str, n: int) -> str:
 
 
 def judgement(prompt: str, salt: str) -> dict:
-    # Finds the expectations by two passages of evals/judge.md; change them together.
+    # Finds the expectations by two passages of the suite's judge.md; change them together.
     labels = list(dict.fromkeys(re.findall(r'<response label="(R\d+)">', prompt)))
     start = prompt.index("Each expectation describes part of a good response.")
     section = prompt[start:prompt.index("\n## Fidelity\n\nFor each response, list:", start)]

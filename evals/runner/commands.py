@@ -17,8 +17,8 @@ from .calibrate import calibration_group, calibration_picks, key_header, packet_
 from .checks import check_rows, input_word_count, word_count
 from .harness import judges_for
 from .io import (
-    EVALS, HARNESS, JUDGE_TEMPLATE, ROOT, SKILL_DIR, SKILL_MD, call, case_files, cases_or_exit, gen_dir,
-    generation_ok, judge_path, judged_conditions, load_cases, load_guidance, load_judgements, load_or_error,
+    HARNESS, JUDGE_TEMPLATE, REFERENCE_DIR, ROOT, SKILL_DIR, SKILL_MD, SUITE_DIR, call, case_files, cases_or_exit,
+    gen_dir, generation_ok, judge_path, judged_conditions, load_cases, load_guidance, load_judgements, load_or_error,
     load_triggers, parallel, read_model, read_text, run_dir, write_manifest,
 )
 from .lint import lint_data, lint_skill, relative_links
@@ -98,7 +98,7 @@ def cmd_selftest(_args: argparse.Namespace) -> int:
     errors = 0
     for case in load_cases():
         files = case_files(case)
-        reference = EVALS / "reference" / f"{case.name}.md"
+        reference = REFERENCE_DIR / f"{case.name}.md"
         if not reference.exists():
             print(f"FAIL {case.name}: no reference solution at {reference.relative_to(ROOT)}")
             errors += 1
@@ -235,7 +235,7 @@ def cmd_lint(_args: argparse.Namespace) -> int:
         warnings.append(f"{SKILL_MD.relative_to(ROOT)} does not exist yet; condition C and triggers will not run")
     cases, case_errors = load_or_error("cases.json", load_cases)
     triggers, trigger_errors = load_or_error("triggers.json", load_triggers)
-    missing = {f for case in cases for f in case.files if not (ROOT / f).exists()}
+    missing = {f for case in cases for f in case.files if not (SUITE_DIR / f).exists()}
     data_errors, data_warnings, summary = lint_data(cases, missing, triggers)
     errors, warnings = errors + case_errors + data_errors + trigger_errors, warnings + data_warnings
     print(summary)

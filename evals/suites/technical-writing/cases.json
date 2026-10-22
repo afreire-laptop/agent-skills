@@ -7,7 +7,7 @@
       "artifact": "README section",
       "prompt": "This README section is too long and people keep missing the important parts. Rewrite it.",
       "files": [
-        "evals/fixtures/01-verbose-readme.md"
+        "fixtures/01-verbose-readme.md"
       ],
       "expected_output": "A markedly shorter section that leads with requirements and the install command and keeps every requirement, limit, and identifier.",
       "expectations": [
@@ -104,7 +104,7 @@
       "artifact": "ADR",
       "prompt": "Clean up ADR 0007 so it's ready for review. The thread notes below it are what we actually discussed.",
       "files": [
-        "evals/fixtures/02-adr-draft.md"
+        "fixtures/02-adr-draft.md"
       ],
       "expected_output": "An ADR with status, context, decision, consequences, and rejected alternatives drawn only from the notes, with unresolved issues left visibly open.",
       "expectations": [
@@ -191,7 +191,7 @@
       "artifact": "RFC",
       "prompt": "Restructure this RFC so reviewers can find the decisions and constraints quickly. Don't change the design.",
       "files": [
-        "evals/fixtures/03-rfc-rate-limiting.md"
+        "fixtures/03-rfc-rate-limiting.md"
       ],
       "expected_output": "The same design, reorganized so the summary, hard constraints, failure behavior, alternatives, risks, non-goals, rollout, and open question are each easy to find.",
       "expectations": [
@@ -336,7 +336,7 @@
       "artifact": "pull request description",
       "prompt": "Write a proper PR title and description for this branch. The current one is useless.",
       "files": [
-        "evals/fixtures/04-vague-pr.md"
+        "fixtures/04-vague-pr.md"
       ],
       "expected_output": "A specific title and a description that explains the bug, the fix, the migration, exactly what was and wasn't tested, and the open risk.",
       "expectations": [
@@ -436,7 +436,7 @@
       "artifact": "commit message",
       "prompt": "Write the commit message for the staged change.",
       "files": [
-        "evals/fixtures/05-commit-diff.md"
+        "fixtures/05-commit-diff.md"
       ],
       "expected_output": "A Conventional Commits message matching the repository's history that marks the breaking change and says how to migrate.",
       "expectations": [
@@ -512,7 +512,7 @@
       "artifact": "technical explanation",
       "prompt": "Edit this explanation of our cache invalidation for the team wiki. It reads like it was written by a chatbot.",
       "files": [
-        "evals/fixtures/06-ai-prose.md"
+        "fixtures/06-ai-prose.md"
       ],
       "expected_output": "A plain explanation that keeps every mechanism and staleness bound and drops the promotional framing.",
       "expectations": [
@@ -597,7 +597,7 @@
       "artifact": "runbook",
       "prompt": "Turn Tomás's notes into a runbook for the on-call team. It will be published on our internal wiki.",
       "files": [
-        "evals/fixtures/07-runbook-notes.md"
+        "fixtures/07-runbook-notes.md"
       ],
       "expected_output": "An ordered, verifiable runbook with placeholders for secrets, the timing window, verification, and rollback, and none of the sensitive values.",
       "expectations": [
@@ -694,7 +694,7 @@
       "artifact": "code review comments",
       "prompt": "Turn my review notes into the comments I'll post on PR #614.",
       "files": [
-        "evals/fixtures/08-review-notes.md"
+        "fixtures/08-review-notes.md"
       ],
       "expected_output": "Five short review comments, each anchored to its line and opening with its weight and ask, then one reason and the fix, without the investigation history.",
       "expectations": [
@@ -797,7 +797,7 @@
       "artifact": "bug report issue",
       "prompt": "Write the GitHub issue for the tilecache repo from my notes.",
       "files": [
-        "evals/fixtures/09-bug-notes.md"
+        "fixtures/09-bug-notes.md"
       ],
       "expected_output": "A bug report whose title names the problem, then expected and actual behaviour, the version and environment, and the reproduction steps, with the cause and workaround, without the incident and the debugging history.",
       "expectations": [
@@ -873,7 +873,7 @@
       "artifact": "pull request description",
       "prompt": "Reviewers say this PR description is too long to get through. Rewrite it for them.",
       "files": [
-        "evals/fixtures/10-long-pr.md"
+        "fixtures/10-long-pr.md"
       ],
       "expected_output": "A reviewer-oriented description of about 250 to 400 words with what the change does and why, its contributor, compatibility, and security impact, the test results and gaps, the limitations, and the ADR decision, leaving the commit walkthrough, the ADR's history, test minutiae, and the follow-up backlog to the commits, the ADR, the test docs, and the issues.",
       "expectations": [
@@ -1022,7 +1022,7 @@
       "artifact": "ADR",
       "prompt": "ADR 0014 has grown long. Tighten it before the architecture review.",
       "files": [
-        "evals/fixtures/11-long-adr.md"
+        "fixtures/11-long-adr.md"
       ],
       "expected_output": "A shorter ADR that keeps the context, the constraints, the decision, every alternative with its reason, every consequence good and bad, the benchmark result, and the open questions, and drops the meeting history, the implementation plan, the raw benchmark output, and the glossary.",
       "expectations": [
@@ -1189,7 +1189,7 @@
       "artifact": "runbook",
       "prompt": "On-call says this failover runbook is too long to follow during an incident. Rewrite it.",
       "files": [
-        "evals/fixtures/12-long-runbook.md"
+        "fixtures/12-long-runbook.md"
       ],
       "expected_output": "A runbook that keeps when to use it, the prerequisites, the write pause, every command in order with the lag threshold and the fencing warning, verification, and what to do before and after promotion, and drops the history, the replication background, and the FAQ.",
       "expectations": [
@@ -1310,7 +1310,7 @@
       "artifact": "pull request description",
       "prompt": "Write the PR description for this branch. The repository's PR template is included.",
       "files": [
-        "evals/fixtures/13-branch-notes.md"
+        "fixtures/13-branch-notes.md"
       ],
       "expected_output": "A description in the repository's template that gives the why, the new flow, the migration, the v1 deprecation and the custom-domain gap, the security boundary, testing and its gaps, and the two open questions, and leaves the retry settings, the ADR's alternatives, tool versions, the test cost, and the follow-ups to the commits, the ADR, and the issues.",
       "expectations": [
