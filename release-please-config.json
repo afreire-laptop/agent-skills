@@ -1,17 +1,18 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "bootstrap-sha": "50b2246e843356545e1817c05e5a249956e669bb",
+  "bootstrap-sha": "2e0d5ed2a11da78cf2b19f86435aad6413dea951",
+  "release-type": "simple",
+  "separate-pull-requests": true,
+  "pull-request-title-pattern": "chore(release):${component} v${version}",
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "revert", "section": "Reverts" }
+  ],
   "packages": {
-    ".": {
-      "release-type": "simple",
-      "include-component-in-tag": false,
-      "pull-request-title-pattern": "chore(release): v${version}",
-      "pull-request-footer": "Before merging a minor or major release, run the full eval and the human calibration check, and commit `evals/suites/technical-writing/results/vX.Y.Z.md`, with X.Y.Z from this title, to main (see README.md, \"Versioning\"). Without it, the release workflow does not tag.",
-      "changelog-sections": [
-        { "type": "feat", "section": "Features" },
-        { "type": "fix", "section": "Bug Fixes" },
-        { "type": "revert", "section": "Reverts" }
-      ]
+    "skills/technical-writing": {
+      "component": "technical-writing",
+      "pull-request-footer": "Before merging a minor or major release, run the full eval and the human calibration check, and merge `evals/suites/technical-writing/results/vX.Y.Z.md`, with X.Y.Z from this title, into main (see README.md, \"Versioning\"). Without it, the release workflow does not tag."
     }
   }
 }

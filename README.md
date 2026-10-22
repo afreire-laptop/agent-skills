@@ -53,7 +53,7 @@ The agent loads the skill when a task matches its description, such as "write th
 ## Design decisions
 
 - The skill is one file. Every run needs the fact rules, the writing guidance, and the output contract, and each artifact note is a line or two. Reference files would save a few hundred tokens per activation but add a read the agent may skip.
-- It lives in `skills/technical-writing/`, so installs get only the skill, never the evals, and the layout matches what multi-harness tools expect.
+- It lives in `skills/technical-writing/`, so installs get only the skill and its changelog, never the evals, and the layout matches what multi-harness tools expect.
 - The description is about 70 tokens: the artifact types that should trigger it, and one exclusion for agent-facing text.
 - The rules come from running the cases without the skill first. Baseline models already kept facts well. They failed on long commentary after the document, bold and emoji, and their own analysis written as the author's. Early drafts of the skill added empty sections and TODO stubs, so section checklists became reader priorities.
 - The fact rules have an order: secrets and personal data first, then the facts this reader needs, then writing only what the source supports, then the author's voice. "Keep every fact" alone conflicts with relevance edits and with removing sensitive material.
@@ -99,9 +99,9 @@ uv run evals/run.py all --run-id smoke --trials 1 --trigger-runs 1
 ```
 skills/technical-writing/SKILL.md            the skill
 skills/technical-writing/agents/openai.yaml  Codex display name and short description
+skills/technical-writing/CHANGELOG.md        release history
 evals/                                       the eval runner and its tools
 evals/suites/technical-writing/              the skill's cases, fixtures, references, and results
-CHANGELOG.md                                 release history
 release-please-config.json                   release pull request and changelog settings
 .github/workflows/ci.yml                     lint, selftest, type check, and commit messages on every push and pull request; release evidence on pull requests
 .github/workflows/release.yml                release pull requests and tags
@@ -109,28 +109,29 @@ release-please-config.json                   release pull request and changelog 
 
 ## Versioning
 
-Versions follow [Semantic Versioning](https://semver.org/), applied to the skill's behaviour. Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), and the commit type sets the version:
+Each skill has its own version. Versions follow [Semantic Versioning](https://semver.org/), applied to the skill's behaviour. Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): the type sets the version, and the scope names the skill.
 
 | Change | Commit | Version |
 |---|---|---|
-| Artifacts added to or dropped from the description, or a guarantee in "Keep the facts" removed or weakened | `feat(skill)!:`, or a `BREAKING CHANGE:` footer | Major |
-| New behaviour or artifact guidance that users would notice in their output | `feat(skill):` | Minor |
-| Wording that keeps the behaviour | `fix(skill):` | Patch |
+| Artifacts added to or dropped from the description, or a guarantee in "Keep the facts" removed or weakened | `feat(technical-writing)!:`, or a `BREAKING CHANGE:` footer | Major |
+| New behaviour or artifact guidance that users would notice in their output | `feat(technical-writing):` | Minor |
+| Wording that keeps the behaviour | `fix(technical-writing):` | Patch |
 | Evals, docs, or CI only | `test`, `docs`, `ci`, `build`, `refactor`, or `chore` | None |
 
-Changes outside `skills/` make no release because installs copy only the skill directory. CI rejects a commit that changes `skills/` with a type that makes no release, and a commit that makes a release without changing `skills/`.
+Installs copy only a skill's directory, so changes outside `skills/<skill>/` make no release. release-please gives a commit to every skill whose files it changes, whatever its scope, so a releasing commit changes exactly one skill and names it as its scope. CI rejects a commit that breaks either rule, and a commit that changes a skill with a type that makes no release; a skill's `CHANGELOG.md` doesn't count as a change to the skill.
 
-Git tags and [`CHANGELOG.md`](CHANGELOG.md) record versions. The frontmatter has no version field.
+Git tags and each skill's changelog, such as [`skills/technical-writing/CHANGELOG.md`](skills/technical-writing/CHANGELOG.md), record versions. Tags name the skill, as in `technical-writing-v0.5.0`. Releases through 0.4.0 were tagged `vX.Y.Z`, and `technical-writing-v0.4.0` marks the same commit as `v0.4.0`. The frontmatter has no version field.
 
-To release:
+To release a skill:
 
-1. Merge changes to `main`. release-please keeps a pull request titled `chore(release): vX.Y.Z` open, with the next version and its `CHANGELOG.md` entry.
-2. For a minor or major release, before merging that pull request, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`. Have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`. Merge the report and the calibration result into `main` through a pull request, as `evals/suites/technical-writing/results/vX.Y.Z.md` with the calibration under `## Judge spot-check`. A patch release runs only the cases its change affects.
-3. Merge the release pull request once its `release-evidence` check passes. The check fails until the results file is on `main` and release-please has rebuilt the pull request on top of it. The release workflow checks again and tags `vX.Y.Z`.
+1. Merge changes to `main`. release-please keeps one pull request open per skill with unreleased changes, titled `chore(release): <skill> vX.Y.Z`, with the next version and its changelog entry.
+2. For a minor or major release, merge the evidence into `main` through a pull request before merging the release pull request. Every skill needs a trigger suite, `evals/suites/<skill>/triggers.json`, and the report of a run as `evals/suites/<skill>/results/vX.Y.Z.md`. When the suite also has quality cases, as technical-writing's does, run `uv run evals/run.py all --run-id vX.Y.Z --judge-effort high`, have a person decide the groups in the packet from `uv run evals/run.py calibrate --run-id vX.Y.Z`, and put the result under `## Judge spot-check` in the report. A patch release runs only the cases its change affects.
+3. release-please doesn't rebuild its pull request when the results merge, because a `docs` commit leaves the changelog unchanged. Run `gh pr update-branch <number> --rebase` to put the release pull request on top of the results.
+4. Merge the release pull request once its `release-evidence` check passes. The release workflow checks again and tags `<skill>-vX.Y.Z`.
 
 The `release-evidence` ruleset requires that check on `main` with no bypass, so every change, results included, reaches `main` through a pull request. If GitHub Actions is down, an admin can disable the ruleset in the repository settings.
 
-If a minor or major release pull request is merged without the results file, nothing is tagged and the release workflow fails on every push. To recover, change the merged pull request's label from `autorelease: pending` to `autorelease: tagged`, merge the results file through a pull request, and run `gh release create vX.Y.Z --target <commit-with-results>`. Then rerun the release workflow run that the results commit started: it began before the tag existed, so it failed.
+If a minor or major release pull request is merged without the results file, nothing is tagged, and the release workflow fails on every push for every skill until you recover. To recover, change the merged pull request's label from `autorelease: pending` to `autorelease: tagged`, merge the results file through a pull request, and run `gh release create <skill>-vX.Y.Z --target <commit-with-results>`. Then rerun the release workflow run that the results commit started: it began before the tag existed, so it failed.
 
 ## License
 
