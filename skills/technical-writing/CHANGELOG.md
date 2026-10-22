@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this skill are recorded here, and versions follow the skill's [versioning policy](README.md#versioning). From 0.2.0 on, [release-please](https://github.com/googleapis/release-please) writes each entry from the commits since the previous release, and its open release pull request shows what is not yet released. Changes to the evals, docs, and CI are not listed; the commit history has them. The 0.1.0 entry follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+All notable changes to this skill are recorded here, and versions follow the skill's [versioning policy](../../README.md#versioning). From 0.2.0 on, [release-please](https://github.com/googleapis/release-please) writes each entry from the commits since the previous release, and its open release pull request shows what is not yet released. Changes to the evals, docs, and CI are not listed; the commit history has them. The 0.1.0 entry follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases through 0.4.0 are tagged `vX.Y.Z`, and later ones `technical-writing-vX.Y.Z`.
 
 ## [0.4.0](https://github.com/afreire-laptop/technical-writing/compare/v0.3.0...v0.4.0) (2026-10-21)
 
@@ -25,7 +25,7 @@ All notable changes to this skill are recorded here, and versions follow the ski
 
 ## [0.1.0] - 2026-10-10
 
-Released for Claude Code only. Every release gate passed for Claude Code; for Codex the short writing rule did as well as the skill. See [`evals/suites/technical-writing/results/v0.1.0.md`](evals/suites/technical-writing/results/v0.1.0.md).
+Released for Claude Code only. Every release gate passed for Claude Code; for Codex the short writing rule did as well as the skill. See [`evals/suites/technical-writing/results/v0.1.0.md`](../../evals/suites/technical-writing/results/v0.1.0.md).
 
 ### Added
 
