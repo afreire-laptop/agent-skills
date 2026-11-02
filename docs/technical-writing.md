@@ -86,4 +86,4 @@ The rules restate these sources; nothing is copied.
 
 ## Versioning
 
-The skill follows the repository's [versioning policy](../README.md#versioning). A major release adds artifacts to or drops them from the description, or removes or weakens a guarantee in "Keep the facts". The [changelog](../skills/technical-writing/CHANGELOG.md) lists every release.
+The skill follows the repository's [versioning policy](../CONTRIBUTING.md#versioning). A major release adds artifacts to or drops them from the description, or removes or weakens a guarantee in "Keep the facts". The [changelog](../skills/technical-writing/CHANGELOG.md) lists every release.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks commit headers against the repository's Conventional Commits rules, and that each
-# commit's type matches the release policy in README.md ("Versioning"):
+# commit's type matches the release policy in CONTRIBUTING.md ("Versioning"):
 #   - a commit that changes a skill, skills/<name>/ apart from its CHANGELOG.md, is feat, fix,
 #     or revert, or marks a breaking change with !; it changes that one skill, and its scope is
 #     the skill's name;
@@ -60,7 +60,7 @@ if [[ -n $title ]]; then
 fi
 
 if (( failures )); then
-  echo "$failures commit message problem(s); see README.md, \"Versioning\"."
+  echo "$failures commit message problem(s); see CONTRIBUTING.md, \"Versioning\"."
   exit 1
 fi
 echo "commit messages: ok ($(wc -w <<<"$commits" | tr -d ' ') commit(s)${title:+ and the pull request title})"

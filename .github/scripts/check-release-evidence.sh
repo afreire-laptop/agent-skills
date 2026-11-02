@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Refuses a skill's minor or major release whose evidence is not in its release commit
-# (README.md, "Versioning"). The commit must hold the skill's trigger suite,
+# (CONTRIBUTING.md, "Versioning"). The commit must hold the skill's trigger suite,
 # evals/suites/<skill>/triggers.json, and the release report, evals/suites/<skill>/results/vX.Y.Z.md.
 # When the suite also has quality cases (cases.json), the report needs a "## Judge spot-check"
 # section with the human calibration result.
@@ -13,9 +13,9 @@ manifest=.release-please-manifest.json
 config=release-please-config.json
 failures=0
 if [[ ${GITHUB_EVENT_NAME:-} == pull_request ]]; then
-  next="Don't merge yet: merge the results into main first, as README.md, \"Versioning\", step 2 says."
+  next="Don't merge yet: merge the results into main first, as CONTRIBUTING.md, \"Versioning\", step 2 says."
 else
-  next="Nothing was tagged. README.md, \"Versioning\", says how to recover."
+  next="Nothing was tagged. CONTRIBUTING.md, \"Versioning\", says how to recover."
 fi
 
 fail() {  # fail <message>
